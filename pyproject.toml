@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cluster-observer"
+version = "0.1.0"
+description = "Small SSH-backed dashboard for PBS cluster jobs"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "holo" }
+]
+dependencies = []
+
+[project.scripts]
+cluster-observer = "cluster_observer.web:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cluster_observer = ["static/*.html", "static/*.css", "static/*.js"]

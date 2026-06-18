@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cluster Status</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Cluster Observer</p>
+          <h1 id="dashboard-title">Cluster Status</h1>
+        </div>
+        <div class="actions">
+          <button id="refresh-button" type="button">Refresh</button>
+          <p id="last-updated">Waiting for first refresh.</p>
+        </div>
+      </section>
+
+      <section class="summary" id="summary"></section>
+      <section class="clusters" id="clusters"></section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

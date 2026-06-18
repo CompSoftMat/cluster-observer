@@ -1,0 +1,20 @@
+[server]
+dashboard_title = "Your Group Cluster Status"
+host = "0.0.0.0"
+port = 8080
+refresh_seconds = 30
+request_timeout_seconds = 20
+
+[[clusters]]
+name = "cluster-a"
+host = "login.cluster-a.example"
+user = "your-username"
+project = "your-project-code"
+ssh_options = ["-o", "BatchMode=yes"]
+
+[[clusters]]
+name = "cluster-b"
+host = "login.cluster-b.example"
+user = "your-username"
+project = "your-project-code"
+ssh_options = ["-o", "BatchMode=yes"]
