@@ -1,13 +1,18 @@
 # Cluster Observer
 
-Researchers who work across more than one server or cluster usually end up asking the same question over and over again: where should the next job go? Checking queue state machine by machine gets tedious quickly. Cluster Observer exists as a small Python dashboard for that exact use case. Given a machine with SSH access to the relevant clusters, it connects to each one, runs `qstat -f`, filters jobs by project, and presents the result in a browser.
+Researchers who work across more than one server or cluster might often ask: where should the next job go? Checking queue state machine by machine gets tedious quickly. 
 
-The project is intentionally lightweight:
-- Python standard library backend
+Cluster Observer is a small Python dashboard for that use case. Given a machine with access to the relevant clusters, it connects to each one, filters jobs by project, and presents the result in a browser.
+
+The project is fairly lightweight:
+- python standard library backend
 - simple static frontend
-- private runtime config loaded from `~/.config/cluster-observer/config.toml`
 
-The repository does not need to contain real cluster hosts, usernames, project codes, or SSH credentials.
+Assumptions:
+- host machine has `ssh` access to the relevant servers
+- `ssh` keys are registered for automatic login
+- server/cluster uses a PBS scheduler for running jobs, i.e. commands such as `qstat` is exposed
+
 
 ## Features
 
@@ -22,10 +27,13 @@ For each configured cluster, the dashboard displays matching jobs with:
 - requested walltime
 - scheduled start time, when exposed by the scheduler
 
-Host/IP values shown in the browser are masked before they reach the frontend.
+Other "privacy" features:
+- private runtime config loaded from `~/.config/cluster-observer/config.toml`
+- Host/IP values shown in the browser are masked before they reach the frontend.
+- This repository does not need to contain real cluster hosts, usernames, project codes, or SSH credentials. You can fork it.
 
 > [!NOTE]
-> Cluster Observer is deliberately an internal tool. It is meant for small-group or personal use in environments where SSH access, scheduler conventions, and project filters are already understood. The goal is to make existing cluster usage easier to inspect, not to provide a general multi-tenant scheduling service.
+> Cluster Observer is deliberately an internal tool. It is meant for small-group or personal use in environments. Although it is built to never expose relevant infomation, use it to your own risk.
 
 ## Scheduler Support
 
