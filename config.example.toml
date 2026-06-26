@@ -11,6 +11,7 @@ host = "login.cluster-a.example"
 user = "your-username"
 project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
+qstat_args = ["-f"]
 
 [[clusters]]
 name = "cluster-b"
@@ -18,3 +19,4 @@ host = "login.cluster-b.example"
 user = "your-username"
 project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
+qstat_args = ["-t", "-f"]

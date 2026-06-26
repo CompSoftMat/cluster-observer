@@ -39,6 +39,8 @@ Other "privacy" features:
 
 Current support is intentionally limited to PBS-style `qstat -f` output, because that is the scheduler environment this tool was written around and used against. The parsing, displayed fields, and assumptions in the dashboard all follow that workflow.
 
+Some PBS deployments expose job arrays or batched jobs only when `qstat` is called with extra flags such as `-t`. Cluster Observer supports that through per-cluster `qstat_args`.
+
 Broader scheduler support may be added later if there is a concrete need for it. Support for other systems should be treated as future work rather than current functionality.
 
 ## Config
@@ -61,6 +63,7 @@ host = "login.cluster-a.example"
 user = "your-username"
 project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
+qstat_args = ["-f"]
 
 [[clusters]]
 name = "cluster-b"
@@ -68,12 +71,14 @@ host = "login.cluster-b.example"
 user = "your-username"
 project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
+qstat_args = ["-t", "-f"]
 ```
 
 Configuration notes:
 - `dashboard_title` controls the browser tab title and main page heading.
 - `project` is required for every cluster and must be set explicitly in your private config.
 - `user` defaults to the local `$USER` if omitted.
+- `qstat_args` defaults to `["-f"]`. For clusters where you want PBS arrays or batched jobs expanded into member jobs, try `["-t", "-f"]`.
 - SSH keys must already be configured. The app does not manage passwords or interactive prompts.
 
 ## Install

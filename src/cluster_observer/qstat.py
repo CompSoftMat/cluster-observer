@@ -37,6 +37,25 @@ def _sanitize_message(message: str, cluster: ClusterConfig) -> str:
     return message.replace(cluster.host, _masked_host(cluster.host))
 
 
+def _job_id_base(job_id: str) -> str:
+    return job_id.split("[", 1)[0]
+
+
+def _drop_batched_parent_rows(jobs: list[JobRecord]) -> list[JobRecord]:
+    child_bases = {
+        _job_id_base(job.job_id)
+        for job in jobs
+        if "[" in job.job_id and "]" in job.job_id
+    }
+    if not child_bases:
+        return jobs
+    return [
+        job
+        for job in jobs
+        if not (job.state == "B" and _job_id_base(job.job_id) in child_bases)
+    ]
+
+
 def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
     jobs: list[JobRecord] = []
     current: dict[str, str] = {}
@@ -95,12 +114,13 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
             current["project"] = value
 
     flush()
-    return jobs
+    return _drop_batched_parent_rows(jobs)
 
 
 def _ssh_command(cluster: ClusterConfig) -> list[str]:
     destination = f"{cluster.user}@{cluster.host}"
-    remote_command = f"{shlex.quote(cluster.qstat_path)} -f"
+    command_parts = [cluster.qstat_path, *cluster.qstat_args]
+    remote_command = " ".join(shlex.quote(part) for part in command_parts)
     return ["ssh", *cluster.ssh_options, destination, remote_command]
 
 

@@ -17,6 +17,7 @@ class ClusterConfig:
     project: str
     ssh_options: tuple[str, ...] = ()
     qstat_path: str = "qstat"
+    qstat_args: tuple[str, ...] = ("-f",)
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ def _cluster_from_dict(raw: dict) -> ClusterConfig:
     project_raw = raw.get("project")
     ssh_options = tuple(str(item) for item in raw.get("ssh_options", []))
     qstat_path = str(raw.get("qstat_path", "qstat"))
+    qstat_args = tuple(str(item) for item in raw.get("qstat_args", ["-f"]))
     if not user:
         raise ValueError(f"cluster {name!r} is missing user")
     if not project_raw:
@@ -53,6 +55,7 @@ def _cluster_from_dict(raw: dict) -> ClusterConfig:
         project=project,
         ssh_options=ssh_options,
         qstat_path=qstat_path,
+        qstat_args=qstat_args,
     )
 
 
