@@ -14,7 +14,7 @@ class ClusterConfig:
     name: str
     host: str
     user: str
-    project: str
+    filter_groups: dict[str, dict[str, tuple[str, ...]]]
     ssh_options: tuple[str, ...] = ()
     qstat_path: str = "qstat"
     qstat_args: tuple[str, ...] = ("-f",)
@@ -35,24 +35,55 @@ def _load_file(path: Path) -> dict:
         return tomllib.load(handle)
 
 
+def _normalize_filter_map(raw: dict) -> dict[str, tuple[str, ...]]:
+    filters: dict[str, tuple[str, ...]] = {}
+    for key, raw_value in raw.items():
+        if isinstance(raw_value, list):
+            values = tuple(str(item) for item in raw_value if str(item))
+        else:
+            value = str(raw_value)
+            values = (value,) if value else ()
+        if values:
+            filters[str(key)] = values
+    return filters
+
+
 def _cluster_from_dict(raw: dict) -> ClusterConfig:
     name = str(raw["name"])
     host = str(raw["host"])
     user = str(raw.get("user") or os.environ.get("USER", ""))
-    project_raw = raw.get("project")
+    filters_raw = raw.get("filters")
+    filter_groups_raw = raw.get("filter_groups")
     ssh_options = tuple(str(item) for item in raw.get("ssh_options", []))
     qstat_path = str(raw.get("qstat_path", "qstat"))
     qstat_args = tuple(str(item) for item in raw.get("qstat_args", ["-f"]))
     if not user:
         raise ValueError(f"cluster {name!r} is missing user")
-    if not project_raw:
-        raise ValueError(f"cluster {name!r} is missing project")
-    project = str(project_raw)
+    filter_groups: dict[str, dict[str, tuple[str, ...]]] = {}
+    if isinstance(filter_groups_raw, dict):
+        for group_name, group_raw in filter_groups_raw.items():
+            if isinstance(group_raw, dict):
+                normalized = _normalize_filter_map(group_raw)
+                if normalized:
+                    filter_groups[str(group_name)] = normalized
+    if isinstance(filters_raw, dict):
+        normalized = _normalize_filter_map(filters_raw)
+        if normalized:
+            filter_groups.setdefault("matching jobs", normalized)
+    project_raw = raw.get("project")
+    if project_raw:
+        legacy_group = dict(filter_groups.get("matching jobs", {}))
+        legacy_group.setdefault("project", (str(project_raw),))
+        filter_groups["matching jobs"] = legacy_group
+    if not filter_groups:
+        raise ValueError(
+            f"cluster {name!r} is missing filter_groups, filters, or legacy project"
+        )
     return ClusterConfig(
         name=name,
         host=host,
         user=user,
-        project=project,
+        filter_groups=filter_groups,
         ssh_options=ssh_options,
         qstat_path=qstat_path,
         qstat_args=qstat_args,

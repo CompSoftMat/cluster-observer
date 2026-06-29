@@ -9,14 +9,21 @@ request_timeout_seconds = 20
 name = "cluster-a"
 host = "login.cluster-a.example"
 user = "your-username"
-project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
 qstat_args = ["-f"]
+
+[clusters.filter_groups.project]
+project = ["your-project-code"]
+
+[clusters.filter_groups.free_queue]
+queue = ["free"]
 
 [[clusters]]
 name = "cluster-b"
 host = "login.cluster-b.example"
 user = "your-username"
-project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
 qstat_args = ["-t", "-f"]
+
+[clusters.filter_groups.project]
+project = ["your-project-code"]

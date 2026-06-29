@@ -61,6 +61,53 @@ function jobRow(job) {
   `;
 }
 
+function renderFilterChips(filters) {
+  return Object.entries(filters)
+    .map(([key, values]) => `<span class="filter-chip">${escapeHtml(key)}: ${escapeHtml(values.join(", "))}</span>`)
+    .join("");
+}
+
+function renderJobTable(jobs) {
+  return `
+    <div class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>User</th>
+            <th>State</th>
+            <th>Submitted</th>
+            <th>Queue</th>
+            <th>GPUs</th>
+            <th>Used</th>
+            <th>Requested</th>
+            <th>Scheduled</th>
+          </tr>
+        </thead>
+        <tbody>${jobs.map(jobRow).join("")}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderGroup(group) {
+  const table = group.jobs.length
+    ? renderJobTable(group.jobs)
+    : `<p class="empty">No matching jobs for this filter group.</p>`;
+  return `
+    <section class="job-group">
+      <div class="job-group-head">
+        <div>
+          <h3 class="job-group-name">${escapeHtml(group.name)}</h3>
+          <div class="job-group-filters">${renderFilterChips(group.filters)}</div>
+        </div>
+        <span class="job-group-count">${group.job_count} jobs</span>
+      </div>
+      ${table}
+    </section>
+  `;
+}
+
 function renderClusters(payload) {
   clustersNode.innerHTML = "";
 
@@ -69,28 +116,9 @@ function renderClusters(payload) {
     card.className = "cluster-card";
     const statusClass = cluster.ok ? "status-pill" : "status-pill error";
     const body = cluster.ok
-      ? cluster.jobs.length
-        ? `
-          <div class="table-shell">
-            <table>
-              <thead>
-                <tr>
-                  <th>Job</th>
-                  <th>User</th>
-                  <th>State</th>
-                  <th>Submitted</th>
-                  <th>Queue</th>
-                  <th>GPUs</th>
-                  <th>Used</th>
-                  <th>Requested</th>
-                  <th>Scheduled</th>
-                </tr>
-              </thead>
-              <tbody>${cluster.jobs.map(jobRow).join("")}</tbody>
-            </table>
-          </div>
-        `
-        : `<p class="empty">No matching jobs for project filter.</p>`
+      ? cluster.job_groups.length
+        ? cluster.job_groups.map(renderGroup).join("")
+        : `<p class="empty">No matching jobs for configured filters.</p>`
       : `<p class="error">${cluster.error}</p>`;
 
     card.innerHTML = `

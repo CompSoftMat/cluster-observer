@@ -2,7 +2,7 @@
 
 Researchers who work across more than one server or cluster might often ask: where should the next job go? Checking queue state machine by machine gets tedious quickly. 
 
-Cluster Observer is a small Python dashboard for that use case. Given a machine with access to the relevant clusters, it connects to each one, filters jobs by project, and presents the result in a browser.
+Cluster Observer is a small Python dashboard for that use case. Given a machine with access to the relevant clusters, it connects to each one, filters jobs by configured scheduler fields, and presents the result in a browser.
 
 The project is fairly lightweight:
 - python standard library backend
@@ -61,22 +61,32 @@ request_timeout_seconds = 20
 name = "cluster-a"
 host = "login.cluster-a.example"
 user = "your-username"
-project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
 qstat_args = ["-f"]
+
+[clusters.filter_groups.project]
+project = ["your-project-code"]
+
+[clusters.filter_groups.free_queue]
+queue = ["free"]
 
 [[clusters]]
 name = "cluster-b"
 host = "login.cluster-b.example"
 user = "your-username"
-project = "your-project-code"
 ssh_options = ["-o", "BatchMode=yes"]
 qstat_args = ["-t", "-f"]
+
+[clusters.filter_groups.project]
+project = ["your-project-code"]
 ```
 
 Configuration notes:
 - `dashboard_title` controls the browser tab title and main page heading.
-- `project` is required for every cluster and must be set explicitly in your private config.
+- `filter_groups` is the preferred way to match jobs per cluster. Each named group is evaluated independently and rendered as its own section in the dashboard.
+- Inside a group, each key should match a parsed `qstat -f` field such as `project`, `queue`, `user`, or `state`.
+- Filter values may be either a single string or a list of strings. A job must satisfy all filters inside a group to appear in that group.
+- Legacy `filters = ...` and `project = "..."` are still accepted and are mapped into a default group for backward compatibility.
 - `user` defaults to the local `$USER` if omitted.
 - `qstat_args` defaults to `["-f"]`. For clusters where you want PBS arrays or batched jobs expanded into member jobs, try `["-t", "-f"]`.
 - SSH keys must already be configured. The app does not manage passwords or interactive prompts.
