@@ -1,10 +1,12 @@
 const summaryNode = document.getElementById("summary");
+const clusterNavNode = document.getElementById("cluster-nav");
 const clustersNode = document.getElementById("clusters");
 const lastUpdatedNode = document.getElementById("last-updated");
 const refreshButton = document.getElementById("refresh-button");
 const dashboardTitleNode = document.getElementById("dashboard-title");
 
 let refreshHandle = null;
+let activeClusterName = null;
 
 function escapeHtml(value) {
   return String(value)
@@ -108,25 +110,37 @@ function renderGroup(group) {
   `;
 }
 
-function renderClusters(payload) {
-  clustersNode.innerHTML = "";
+function clusterTab(cluster, isActive) {
+  const statusClass = cluster.ok ? "status-pill" : "status-pill error";
+  return `
+    <button class="cluster-tab${isActive ? " active" : ""}" type="button" data-cluster-name="${escapeHtml(cluster.cluster)}">
+      <div class="cluster-tab-head">
+        <span class="cluster-tab-name">${escapeHtml(cluster.cluster)}</span>
+        <span class="${statusClass}">${cluster.ok ? "ok" : "error"}</span>
+      </div>
+      <div class="cluster-tab-meta">
+        <span>${cluster.job_count} jobs</span>
+        <span>${cluster.duration_seconds}s</span>
+      </div>
+    </button>
+  `;
+}
 
-  for (const cluster of payload.clusters) {
-    const card = document.createElement("article");
-    card.className = "cluster-card";
-    const statusClass = cluster.ok ? "status-pill" : "status-pill error";
-    const body = cluster.ok
-      ? cluster.job_groups.length
-        ? cluster.job_groups.map(renderGroup).join("")
-        : `<p class="empty">No matching jobs for configured filters.</p>`
-      : `<p class="error">${cluster.error}</p>`;
+function renderClusterCard(cluster) {
+  const statusClass = cluster.ok ? "status-pill" : "status-pill error";
+  const body = cluster.ok
+    ? cluster.job_groups.length
+      ? cluster.job_groups.map(renderGroup).join("")
+      : `<p class="empty">No matching jobs for configured filters.</p>`
+    : `<p class="error">${cluster.error}</p>`;
 
-    card.innerHTML = `
+  return `
+    <article class="cluster-card">
       <div class="cluster-head">
         <div>
-          <h2 class="cluster-name">${cluster.cluster}</h2>
+          <h2 class="cluster-name">${escapeHtml(cluster.cluster)}</h2>
           <div class="cluster-meta">
-            <span>${cluster.host}</span>
+            <span>${escapeHtml(cluster.host)}</span>
             <span>${cluster.job_count} jobs</span>
             <span>${cluster.duration_seconds}s fetch</span>
           </div>
@@ -134,8 +148,35 @@ function renderClusters(payload) {
         <span class="${statusClass}">${cluster.ok ? "reachable" : "error"}</span>
       </div>
       ${body}
-    `;
-    clustersNode.appendChild(card);
+    </article>
+  `;
+}
+
+function renderClusters(payload) {
+  clusterNavNode.innerHTML = "";
+  clustersNode.innerHTML = "";
+
+  if (!payload.clusters.length) {
+    clusterNavNode.innerHTML = `<p class="empty">No clusters configured.</p>`;
+    clustersNode.innerHTML = `<p class="empty">No cluster data available.</p>`;
+    return;
+  }
+
+  const selectedCluster =
+    payload.clusters.find(cluster => cluster.cluster === activeClusterName) || payload.clusters[0];
+  activeClusterName = selectedCluster.cluster;
+
+  clusterNavNode.innerHTML = `
+    <p class="cluster-nav-title">Clusters</p>
+    ${payload.clusters.map(cluster => clusterTab(cluster, cluster.cluster === activeClusterName)).join("")}
+  `;
+  clustersNode.innerHTML = renderClusterCard(selectedCluster);
+
+  for (const button of clusterNavNode.querySelectorAll("[data-cluster-name]")) {
+    button.addEventListener("click", () => {
+      activeClusterName = button.dataset.clusterName;
+      renderClusters(payload);
+    });
   }
 }
 

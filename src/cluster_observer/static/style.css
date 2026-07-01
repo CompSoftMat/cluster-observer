@@ -132,9 +132,73 @@ button:disabled {
   color: var(--ink);
 }
 
-.clusters {
+.workspace {
   display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 16px;
+  align-items: start;
+}
+
+.cluster-nav,
+.cluster-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.cluster-nav {
+  padding: 12px;
+  border-radius: 16px;
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.cluster-nav-title {
+  margin: 4px 6px 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cluster-tab {
+  width: 100%;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: transparent;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.cluster-tab.active {
+  background: rgba(126, 156, 216, 0.1);
+  border-color: rgba(126, 156, 216, 0.3);
+}
+
+.cluster-tab-head,
+.cluster-tab-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cluster-tab-name {
+  font-size: 0.96rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.cluster-tab-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.clusters {
+  min-width: 0;
 }
 
 .cluster-card {
@@ -345,6 +409,22 @@ tbody tr:hover {
   .cluster-head,
   .job-group-head {
     flex-direction: column;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .cluster-nav {
+    position: static;
+  }
+
+  .cluster-nav-title {
+    margin-left: 2px;
+  }
+
+  .cluster-tab {
+    padding: 10px 12px;
   }
 
   .actions {

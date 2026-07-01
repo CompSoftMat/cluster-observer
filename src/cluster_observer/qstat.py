@@ -1,27 +1,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
 import shlex
 import subprocess
 import time
 
 from cluster_observer.config import AppConfig, ClusterConfig
-
-
-@dataclass(frozen=True)
-class JobRecord:
-    cluster: str
-    job_id: str
-    user: str
-    state: str
-    project: str
-    submitted_at: str
-    queue: str
-    gpu: str
-    used_walltime: str
-    requested_walltime: str
-    scheduled_start_time: str
+from cluster_observer.filters import build_job_groups
+from cluster_observer.models import JobRecord
 
 
 def _masked_host(host: str) -> str:
@@ -39,7 +25,7 @@ def _sanitize_message(message: str, cluster: ClusterConfig) -> str:
 
 
 def _job_id_base(job_id: str) -> str:
-    return job_id.split("[", 1)[0]
+    return job_id.split(".", 1)[0].split("[", 1)[0]
 
 
 def _drop_batched_parent_rows(jobs: list[JobRecord]) -> list[JobRecord]:
@@ -55,13 +41,6 @@ def _drop_batched_parent_rows(jobs: list[JobRecord]) -> list[JobRecord]:
         for job in jobs
         if not (job.state == "B" and _job_id_base(job.job_id) in child_bases)
     ]
-
-
-def _matches_filters(current: dict[str, str], filters: dict[str, tuple[str, ...]]) -> bool:
-    for key, allowed_values in filters.items():
-        if current.get(key) not in allowed_values:
-            return False
-    return True
 
 
 def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
@@ -122,30 +101,6 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
     return _drop_batched_parent_rows(jobs)
 
 
-def _filter_job_groups(cluster: ClusterConfig, jobs: list[JobRecord]) -> tuple[list[dict], list[dict]]:
-    grouped_jobs: list[dict] = []
-    seen_job_ids: set[str] = set()
-    unique_jobs: list[dict] = []
-    for group_name, filters in cluster.filter_groups.items():
-        matching_jobs = []
-        for job in jobs:
-            job_data = asdict(job)
-            if _matches_filters(job_data, filters):
-                matching_jobs.append(job_data)
-                if job.job_id not in seen_job_ids:
-                    seen_job_ids.add(job.job_id)
-                    unique_jobs.append(job_data)
-        grouped_jobs.append(
-            {
-                "name": group_name,
-                "filters": {key: list(values) for key, values in filters.items()},
-                "jobs": matching_jobs,
-                "job_count": len(matching_jobs),
-            }
-        )
-    return grouped_jobs, unique_jobs
-
-
 def _ssh_command(cluster: ClusterConfig) -> list[str]:
     destination = f"{cluster.user}@{cluster.host}"
     command_parts = [cluster.qstat_path, *cluster.qstat_args]
@@ -165,13 +120,13 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             timeout=timeout_seconds,
         )
         parsed_jobs = _parse_qstat_output(proc.stdout, cluster)
-        job_groups, jobs = _filter_job_groups(cluster, parsed_jobs)
+        job_groups, jobs = build_job_groups(cluster, parsed_jobs)
         return {
             "cluster": cluster.name,
             "host": masked_host,
             "ok": True,
-            "jobs": jobs,
-            "job_groups": job_groups,
+            "jobs": [job.to_dict() for job in jobs],
+            "job_groups": [group.to_dict() for group in job_groups],
             "job_count": len(jobs),
             "duration_seconds": round(time.time() - started, 2),
         }
