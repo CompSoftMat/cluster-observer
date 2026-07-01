@@ -268,6 +268,10 @@ button:disabled {
   margin-top: 18px;
 }
 
+.job-subgroup + .job-subgroup {
+  margin-top: 16px;
+}
+
 .job-group-head {
   display: flex;
   justify-content: space-between;
@@ -301,9 +305,44 @@ button:disabled {
   color: var(--muted);
 }
 
+.job-subgroup-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.job-subgroup-name {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.job-subgroup-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.job-subgroup-running .job-subgroup-name {
+  color: var(--green);
+}
+
+.job-subgroup-other .job-subgroup-name {
+  color: var(--warn);
+}
+
 table {
   width: 100%;
-  min-width: 980px;
+  min-width: 860px;
   border-collapse: separate;
   border-spacing: 0;
   background: transparent;
@@ -312,9 +351,9 @@ table {
 th,
 td {
   text-align: left;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   vertical-align: middle;
 }
 

@@ -69,7 +69,17 @@ function renderFilterChips(filters) {
     .join("");
 }
 
+function compareJobs(left, right) {
+  const leftSubmitted = left.submitted_at || "";
+  const rightSubmitted = right.submitted_at || "";
+  if (leftSubmitted !== rightSubmitted) {
+    return leftSubmitted.localeCompare(rightSubmitted);
+  }
+  return (left.job_id || "").localeCompare(right.job_id || "");
+}
+
 function renderJobTable(jobs) {
+  const sortedJobs = [...jobs].sort(compareJobs);
   return `
     <div class="table-shell">
       <table>
@@ -86,15 +96,36 @@ function renderJobTable(jobs) {
             <th>Scheduled</th>
           </tr>
         </thead>
-        <tbody>${jobs.map(jobRow).join("")}</tbody>
+        <tbody>${sortedJobs.map(jobRow).join("")}</tbody>
       </table>
     </div>
   `;
 }
 
+function renderSubgroup(title, count, jobs, extraClass = "") {
+  if (!jobs.length) {
+    return "";
+  }
+  return `
+    <section class="job-subgroup${extraClass ? ` ${extraClass}` : ""}">
+      <div class="job-subgroup-head">
+        <h4 class="job-subgroup-name">${escapeHtml(title)}</h4>
+        <span class="job-subgroup-count">${count} jobs</span>
+      </div>
+      ${renderJobTable(jobs)}
+    </section>
+  `;
+}
+
 function renderGroup(group) {
-  const table = group.jobs.length
-    ? renderJobTable(group.jobs)
+  const runningJobs = group.jobs.filter(job => (job.state || "").toUpperCase() === "R");
+  const remainingJobs = group.jobs.filter(job => (job.state || "").toUpperCase() !== "R");
+  const sections = [
+    renderSubgroup("Running", runningJobs.length, runningJobs, "job-subgroup-running"),
+    renderSubgroup("Queued / Held / Other", remainingJobs.length, remainingJobs, "job-subgroup-other"),
+  ].filter(Boolean);
+  const body = sections.length
+    ? sections.join("")
     : `<p class="empty">No matching jobs for this filter group.</p>`;
   return `
     <section class="job-group">
@@ -105,7 +136,7 @@ function renderGroup(group) {
         </div>
         <span class="job-group-count">${group.job_count} jobs</span>
       </div>
-      ${table}
+      ${body}
     </section>
   `;
 }
