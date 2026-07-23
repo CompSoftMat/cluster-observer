@@ -6,7 +6,7 @@ import subprocess
 import time
 
 from cluster_observer.config import AppConfig, ClusterConfig
-from cluster_observer.filters import build_job_groups
+from cluster_observer.filters import build_job_groups, summarize_jobs
 from cluster_observer.models import JobRecord
 
 
@@ -119,14 +119,15 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             text=True,
             timeout=timeout_seconds,
         )
-        parsed_jobs = _parse_qstat_output(proc.stdout, cluster)
-        job_groups, jobs = build_job_groups(cluster, parsed_jobs)
+        jobs = _parse_qstat_output(proc.stdout, cluster)
+        job_groups, _ = build_job_groups(cluster, jobs)
         return {
             "cluster": cluster.name,
             "host": masked_host,
             "ok": True,
             "jobs": [job.to_dict() for job in jobs],
             "job_groups": [group.to_dict() for group in job_groups],
+            "summary": summarize_jobs(jobs),
             "job_count": len(jobs),
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -138,6 +139,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": f"ssh command timed out after {timeout_seconds}s",
             "jobs": [],
             "job_groups": [],
+            "summary": summarize_jobs([]),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -150,6 +152,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": _sanitize_message(message, cluster),
             "jobs": [],
             "job_groups": [],
+            "summary": summarize_jobs([]),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }

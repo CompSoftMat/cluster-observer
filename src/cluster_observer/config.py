@@ -76,9 +76,7 @@ def _cluster_from_dict(raw: dict) -> ClusterConfig:
         legacy_group.setdefault("project", (str(project_raw),))
         filter_groups["matching jobs"] = legacy_group
     if not filter_groups:
-        raise ValueError(
-            f"cluster {name!r} is missing filter_groups, filters, or legacy project"
-        )
+        filter_groups["all jobs"] = {}
     return ClusterConfig(
         name=name,
         host=host,

@@ -60,3 +60,19 @@ class ConfigTests(unittest.TestCase):
             config.clusters[0].filter_groups,
             {"matching jobs": {"project": ("legacy-project",)}},
         )
+
+    def test_missing_filter_groups_defaults_to_all_jobs(self) -> None:
+        config_text = textwrap.dedent(
+            """
+            [[clusters]]
+            name = "gaas"
+            host = "gaas.example"
+            user = "alice"
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "config.toml"
+            path.write_text(config_text)
+            config = load_config(str(path))
+
+        self.assertEqual(config.clusters[0].filter_groups, {"all jobs": {}})
