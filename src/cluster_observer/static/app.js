@@ -412,7 +412,7 @@ function renderClusterCard(cluster, viewState) {
         ${summaryCard("Queued", String(summary.queued_jobs || 0), "cluster-stat-queued")}
         ${summaryCard("Held", String(summary.held_jobs || 0), "cluster-stat-held")}
         ${summaryCard("Users", String(summary.users_count || 0))}
-        ${summaryCard("Running GPUs", String(summary.running_gpu_total || 0))}
+        ${summaryCard("Projects", String(summary.projects_count || 0))}
       </section>
 
       ${renderPresetButtons(cluster, viewState)}
@@ -422,7 +422,7 @@ function renderClusterCard(cluster, viewState) {
         ${renderFacetSection("Top Users", "user", summary.user_counts || [], viewState.user)}
         ${renderFacetSection("Queues", "queue", summary.queue_counts || [], viewState.queue)}
         ${renderFacetSection("States", "state", summary.state_counts || [], viewState.state)}
-        ${renderFacetSection("Running GPUs by User", "user", summary.running_gpu_by_user || [], viewState.user)}
+        ${renderFacetSection("Top Projects", "project", summary.project_counts || [], viewState.project)}
       </section>
 
       ${renderJobTable(filtered, viewState)}
