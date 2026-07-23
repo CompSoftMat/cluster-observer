@@ -127,7 +127,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "ok": True,
             "jobs": [job.to_dict() for job in jobs],
             "job_groups": [group.to_dict() for group in job_groups],
-            "summary": summarize_jobs(jobs),
+            "summary": summarize_jobs(jobs, cluster),
             "job_count": len(jobs),
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -139,7 +139,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": f"ssh command timed out after {timeout_seconds}s",
             "jobs": [],
             "job_groups": [],
-            "summary": summarize_jobs([]),
+            "summary": summarize_jobs([], cluster),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -152,7 +152,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": _sanitize_message(message, cluster),
             "jobs": [],
             "job_groups": [],
-            "summary": summarize_jobs([]),
+            "summary": summarize_jobs([], cluster),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }

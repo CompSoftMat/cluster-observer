@@ -44,11 +44,31 @@ def _gpu_count(job: JobRecord) -> int:
         return 0
 
 
-def summarize_jobs(jobs: list[JobRecord]) -> dict:
+def _configured_project_values(cluster: ClusterConfig) -> tuple[str, ...]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for filters in cluster.filter_groups.values():
+        for value in filters.get("project", ()):
+            if value not in seen:
+                seen.add(value)
+                values.append(value)
+    return tuple(values)
+
+
+def summarize_jobs(jobs: list[JobRecord], cluster: ClusterConfig | None = None) -> dict:
     state_counts = Counter((job.state or "").upper() or "-" for job in jobs)
     user_counts = Counter(job.user or "-" for job in jobs)
     queue_counts = Counter(job.queue or "-" for job in jobs)
     project_counts = Counter(job.project or "-" for job in jobs)
+    configured_projects = set(_configured_project_values(cluster)) if cluster else set()
+    if configured_projects:
+        project_counts = Counter(
+            {
+                project: count
+                for project, count in project_counts.items()
+                if project in configured_projects
+            }
+        )
     running_gpu_by_user = Counter()
     for job in jobs:
         if (job.state or "").upper() == "R":

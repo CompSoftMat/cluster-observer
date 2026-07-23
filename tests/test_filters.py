@@ -55,6 +55,15 @@ class FilterTests(unittest.TestCase):
         self.assertEqual([job.job_id for job in unique_jobs], ["100", "101"])
 
     def test_summarize_jobs_builds_counts_for_faceted_dashboard(self) -> None:
+        cluster = ClusterConfig(
+            name="gaas",
+            host="gaas.example",
+            user="alice",
+            filter_groups={
+                "project": {"project": ("proj-a",)},
+                "free_queue": {"queue": ("gpu_free",)},
+            },
+        )
         jobs = [
             JobRecord(
                 cluster="gaas",
@@ -97,7 +106,7 @@ class FilterTests(unittest.TestCase):
             ),
         ]
 
-        summary = summarize_jobs(jobs)
+        summary = summarize_jobs(jobs, cluster)
 
         self.assertEqual(summary["total_jobs"], 3)
         self.assertEqual(summary["running_jobs"], 1)
@@ -106,4 +115,6 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(summary["running_gpu_total"], 2)
         self.assertEqual(summary["user_counts"][0], {"value": "alice", "count": 2})
         self.assertEqual(summary["queue_counts"][0], {"value": "gpu_free", "count": 2})
+        self.assertEqual(summary["projects_count"], 1)
+        self.assertEqual(summary["project_counts"], [{"value": "proj-a", "count": 2}])
         self.assertEqual(summary["running_gpu_by_user"], [{"value": "alice", "count": 2}])
