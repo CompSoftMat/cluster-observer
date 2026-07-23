@@ -119,8 +119,8 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             text=True,
             timeout=timeout_seconds,
         )
-        jobs = _parse_qstat_output(proc.stdout, cluster)
-        job_groups, _ = build_job_groups(cluster, jobs)
+        parsed_jobs = _parse_qstat_output(proc.stdout, cluster)
+        job_groups, jobs = build_job_groups(cluster, parsed_jobs)
         return {
             "cluster": cluster.name,
             "host": masked_host,
