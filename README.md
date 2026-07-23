@@ -16,7 +16,7 @@ Assumptions:
 
 ## Features
 
-For each configured cluster, the dashboard displays matching jobs with:
+For each configured cluster, the dashboard displays jobs with:
 - job ID
 - owner username
 - job state
@@ -26,6 +26,12 @@ For each configured cluster, the dashboard displays matching jobs with:
 - used walltime
 - requested walltime
 - scheduled start time, when exposed by the scheduler
+
+The browser UI is built around one cluster-wide job table plus live filters:
+- quick preset buttons derived from configured `filter_groups`
+- interactive filtering by user, queue, state, and project
+- summary cards and top-user / top-queue breakdowns
+- client-side search, sorting, and pagination for large job sets
 
 Other "privacy" features:
 - private runtime config loaded from `~/.config/cluster-observer/config.toml`
@@ -83,9 +89,10 @@ project = ["your-project-code"]
 
 Configuration notes:
 - `dashboard_title` controls the browser tab title and main page heading.
-- `filter_groups` is the preferred way to match jobs per cluster. Each named group is evaluated independently and rendered as its own section in the dashboard.
+- `filter_groups` is optional. When provided, each named group becomes a one-click preset in the dashboard.
 - Inside a group, each key should match a parsed `qstat -f` field such as `project`, `queue`, `user`, or `state`.
 - Filter values may be either a single string or a list of strings. A job must satisfy all filters inside a group to appear in that group.
+- If no `filter_groups`, legacy `filters`, or `project` are configured, the cluster defaults to an `all jobs` preset.
 - Legacy `filters = ...` and `project = "..."` are still accepted and are mapped into a default group for backward compatibility.
 - `user` defaults to the local `$USER` if omitted.
 - `qstat_args` defaults to `["-f"]`. For clusters where you want PBS arrays or batched jobs expanded into member jobs, try `["-t", "-f"]`.
