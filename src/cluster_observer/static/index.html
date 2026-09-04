@@ -9,17 +9,17 @@
   <body>
     <main class="page">
       <section class="hero">
-        <div>
+        <div class="brand">
           <p class="eyebrow">Cluster Observer</p>
           <h1 id="dashboard-title">Cluster Status</h1>
         </div>
+        <section class="summary" id="summary" aria-label="Dashboard status"></section>
         <div class="actions">
-          <button id="refresh-button" type="button">Refresh</button>
+          <button id="refresh-button" type="button">Reload</button>
           <p id="last-updated">Waiting for first refresh.</p>
         </div>
       </section>
 
-      <section class="summary" id="summary"></section>
       <section class="workspace">
         <nav class="cluster-nav" id="cluster-nav" aria-label="Clusters"></nav>
         <section class="clusters" id="clusters"></section>

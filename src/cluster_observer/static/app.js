@@ -9,8 +9,10 @@ const PAGE_SIZE = 40;
 const FACET_PREVIEW_LIMIT = 10;
 const FILTER_KEYS = ["user", "queue", "state", "project"];
 const STATE_ORDER = { R: 0, Q: 1, H: 2 };
+const SLOW_FETCH_SECONDS = 5;
 
 let refreshHandle = null;
+let lastGeneratedEpoch = null;
 let activeClusterName = null;
 const clusterViewState = {};
 
@@ -49,25 +51,20 @@ function ensureViewState(clusterName) {
       sortKey: "submitted_at",
       sortDirection: "asc",
       page: 1,
+      showBreakdowns: false,
     };
   }
   return clusterViewState[clusterName];
 }
 
 function renderSummary(payload) {
-  summaryNode.innerHTML = "";
-  const stats = [
-    ["Clusters OK", `${payload.ok_clusters} / ${payload.total_clusters}`],
-    ["Tracked Jobs", String(payload.total_jobs)],
-    ["Refresh Every", `${payload.refresh_seconds}s`],
-  ];
-
-  for (const [label, value] of stats) {
-    const card = document.createElement("article");
-    card.className = "stat";
-    card.innerHTML = `<span class="stat-label">${label}</span><span class="stat-value">${value}</span>`;
-    summaryNode.appendChild(card);
-  }
+  const hasProblems = payload.ok_clusters !== payload.total_clusters;
+  summaryNode.innerHTML = `
+    <span class="global-stat${hasProblems ? " warning" : ""}">
+      <strong>${payload.ok_clusters}/${payload.total_clusters}</strong> online
+    </span>
+    <span class="global-stat"><strong>${payload.total_jobs}</strong> jobs</span>
+  `;
 }
 
 function renderFilterChips(filters) {
@@ -83,6 +80,11 @@ function renderFilterChips(filters) {
 function clusterTab(cluster, isActive) {
   const statusClass = cluster.stale ? "status-pill stale" : (cluster.ok ? "status-pill" : "status-pill error");
   const statusLabel = cluster.stale ? "stale" : (cluster.ok ? "ok" : "error");
+  const summary = cluster.summary || {};
+  const slowFetch = Number(cluster.duration_seconds) >= SLOW_FETCH_SECONDS;
+  const fetchDetail = (cluster.stale || !cluster.ok || slowFetch)
+    ? `<span>${cluster.duration_seconds}s fetch</span>`
+    : "";
   return `
     <button class="cluster-tab${isActive ? " active" : ""}" type="button" data-cluster-name="${escapeHtml(cluster.cluster)}">
       <div class="cluster-tab-head">
@@ -90,8 +92,11 @@ function clusterTab(cluster, isActive) {
         <span class="${statusClass}">${statusLabel}</span>
       </div>
       <div class="cluster-tab-meta">
-        <span>${cluster.job_count} jobs</span>
-        <span>${cluster.duration_seconds}s</span>
+        <span><strong class="running-count">R ${summary.running_jobs || 0}</strong></span>
+        <span><strong class="queued-count">Q ${summary.queued_jobs || 0}</strong></span>
+        ${(summary.held_jobs || 0) > 0 ? `<span><strong class="held-count">H ${summary.held_jobs}</strong></span>` : ""}
+        <span>${summary.running_gpu_total || 0} GPU</span>
+        ${fetchDetail}
       </div>
     </button>
   `;
@@ -193,15 +198,6 @@ function filteredJobs(cluster, viewState) {
   return cluster.jobs.filter(job => jobMatchesView(job, viewState, presetFilters));
 }
 
-function summaryCard(label, value, accent = "") {
-  return `
-    <article class="cluster-stat${accent ? ` ${accent}` : ""}">
-      <span class="stat-label">${escapeHtml(label)}</span>
-      <span class="stat-value">${escapeHtml(value)}</span>
-    </article>
-  `;
-}
-
 function facetButton(key, item, activeValue) {
   const isActive = item.value === activeValue;
   return `
@@ -231,17 +227,19 @@ function renderFacetSection(title, key, items, activeValue) {
 }
 
 function jobRow(job) {
+  const used = job.used_walltime || "—";
+  const requested = job.requested_walltime || "—";
   return `
     <tr>
-      <td data-label="Job" class="col-job"><code>${escapeHtml(job.job_id || "-")}</code></td>
+      <td data-label="Job" class="col-job">
+        <code>${escapeHtml(job.job_id || "-")}</code>
+        <span class="row-secondary">${escapeHtml(job.project || "no project")} · ${escapeHtml(job.submitted_at || "submit time unavailable")}</span>
+      </td>
       <td data-label="User" class="col-user">${escapeHtml(job.user || "-")}</td>
       <td data-label="State" class="col-state"><span class="${stateClass(job.state)}">${escapeHtml(job.state || "-")}</span></td>
-      <td data-label="Project" class="col-project">${escapeHtml(job.project || "-")}</td>
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
       <td data-label="GPUs" class="col-gpu">${escapeHtml(job.gpu || "-")}</td>
-      <td data-label="Submitted" class="col-time">${escapeHtml(job.submitted_at || "-")}</td>
-      <td data-label="Used" class="col-time">${escapeHtml(job.used_walltime || "-")}</td>
-      <td data-label="Requested" class="col-time">${escapeHtml(job.requested_walltime || "-")}</td>
+      <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}</td>
       <td data-label="Scheduled" class="col-time">${escapeHtml(job.scheduled_start_time || "-")}</td>
     </tr>
   `;
@@ -290,15 +288,12 @@ function renderJobTable(jobs, viewState) {
         <table>
           <thead>
             <tr>
-              ${sortableHeader("Job", "job_id", viewState)}
+              ${sortableHeader("Job · submitted", "submitted_at", viewState)}
               ${sortableHeader("User", "user", viewState)}
               ${sortableHeader("State", "state", viewState)}
-              ${sortableHeader("Project", "project", viewState)}
               ${sortableHeader("Queue", "queue", viewState)}
               ${sortableHeader("GPUs", "gpu", viewState)}
-              ${sortableHeader("Submitted", "submitted_at", viewState)}
-              ${sortableHeader("Used", "used_walltime", viewState)}
-              ${sortableHeader("Requested", "requested_walltime", viewState)}
+              ${sortableHeader("Walltime", "used_walltime", viewState)}
               ${sortableHeader("Scheduled", "scheduled_start_time", viewState)}
             </tr>
           </thead>
@@ -309,40 +304,24 @@ function renderJobTable(jobs, viewState) {
   `;
 }
 
-function renderPresetButtons(cluster, viewState) {
-  if (!(cluster.job_groups || []).length) {
-    return "";
-  }
-  return `
-    <section class="controls-card">
-      <div class="facet-card-head">
-        <h3 class="facet-card-title">Quick Presets</h3>
-        <button type="button" class="secondary-button" data-action="clear-preset">Clear preset</button>
-      </div>
-      <div class="preset-list">
-        ${cluster.job_groups.map(group => `
-          <button class="preset-button${group.name === viewState.selectedPreset ? " active" : ""}" type="button" data-preset-name="${escapeHtml(group.name)}">
-            <span class="preset-name">${escapeHtml(group.name)}</span>
-            <span class="preset-count">${group.job_count}</span>
-          </button>
-        `).join("")}
-      </div>
-      <div class="preset-details">
-        ${viewState.selectedPreset
-          ? renderFilterChips((cluster.job_groups.find(group => group.name === viewState.selectedPreset) || {}).filters || {})
-          : `<span class="empty">Preset filters are optional. Use them as one-click starting points.</span>`}
-      </div>
-    </section>
-  `;
-}
-
 function renderControls(cluster, viewState) {
   const summary = cluster.summary || {};
+  const groups = cluster.job_groups || [];
   return `
     <section class="controls-card">
-      <div class="facet-card-head">
-        <h3 class="facet-card-title">Live Filters</h3>
-        <button type="button" class="secondary-button" data-action="clear-filters">Clear filters</button>
+      <div class="controls-head">
+        <div class="controls-title-row">
+          <h3 class="facet-card-title">Jobs</h3>
+          <div class="preset-list">
+            ${groups.map(group => `
+              <button class="preset-button${group.name === viewState.selectedPreset ? " active" : ""}" type="button" data-preset-name="${escapeHtml(group.name)}">
+                <span class="preset-name">${escapeHtml(group.name)}</span>
+                <span class="preset-count">${group.job_count}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+        <button type="button" class="secondary-button" data-action="clear-all">Clear</button>
       </div>
       <div class="control-grid">
         <label class="control-field">
@@ -366,6 +345,27 @@ function renderControls(cluster, viewState) {
           <input type="search" value="${escapeHtml(viewState.search)}" placeholder="job id, user, queue, project" data-filter-key="search">
         </label>
       </div>
+      ${viewState.selectedPreset
+        ? `<div class="active-preset">${renderFilterChips((groups.find(group => group.name === viewState.selectedPreset) || {}).filters || {})}</div>`
+        : ""}
+    </section>
+  `;
+}
+
+function renderBreakdowns(summary, viewState) {
+  return `
+    <section class="breakdowns">
+      <button class="breakdown-toggle" type="button" data-action="toggle-breakdowns" aria-expanded="${viewState.showBreakdowns}">
+        <span>${viewState.showBreakdowns ? "Hide" : "Show"} breakdowns</span>
+        <span aria-hidden="true">${viewState.showBreakdowns ? "↑" : "↓"}</span>
+      </button>
+      ${viewState.showBreakdowns ? `
+        <div class="facets-grid">
+          ${renderFacetSection("Top Users", "user", summary.user_counts || [], viewState.user)}
+          ${renderFacetSection("Queues", "queue", summary.queue_counts || [], viewState.queue)}
+          ${renderFacetSection("Projects", "project", summary.project_counts || [], viewState.project)}
+        </div>
+      ` : ""}
     </section>
   `;
 }
@@ -379,7 +379,6 @@ function renderClusterCard(cluster, viewState) {
           <div>
             <h2 class="cluster-name">${escapeHtml(cluster.cluster)}</h2>
             <div class="cluster-meta">
-              <span>${escapeHtml(cluster.host)}</span>
               <span>${cluster.job_count} jobs</span>
               <span>${cluster.duration_seconds}s fetch</span>
             </div>
@@ -398,11 +397,10 @@ function renderClusterCard(cluster, viewState) {
       <div class="cluster-head">
         <div>
           <h2 class="cluster-name">${escapeHtml(cluster.cluster)}</h2>
-          <div class="cluster-meta">
-            <span>${escapeHtml(cluster.host)}</span>
-            <span>${cluster.job_count} jobs</span>
-            <span>${cluster.duration_seconds}s fetch</span>
-          </div>
+            <div class="cluster-meta">
+              <span>${cluster.job_count} jobs tracked</span>
+              ${Number(cluster.duration_seconds) >= SLOW_FETCH_SECONDS ? `<span>${cluster.duration_seconds}s fetch</span>` : ""}
+            </div>
         </div>
         <span class="${statusClass}">${cluster.stale ? "stale data" : "reachable"}</span>
       </div>
@@ -411,25 +409,15 @@ function renderClusterCard(cluster, viewState) {
         ? `<p class="stale-warning">Latest collection failed: ${escapeHtml(cluster.error)}. Showing the last successful snapshot from ${new Date(cluster.last_success_epoch * 1000).toLocaleString()}.</p>`
         : ""}
 
-      <section class="cluster-summary-grid">
-        ${summaryCard("Jobs", String(summary.total_jobs || 0))}
-        ${summaryCard("Running", String(summary.running_jobs || 0), "cluster-stat-running")}
-        ${summaryCard("Queued", String(summary.queued_jobs || 0), "cluster-stat-queued")}
-        ${summaryCard("Held", String(summary.held_jobs || 0), "cluster-stat-held")}
-        ${summaryCard("Users", String(summary.users_count || 0))}
-        ${summaryCard("Projects", String(summary.projects_count || 0))}
+      <section class="cluster-metrics" aria-label="Cluster job summary">
+        <span><strong class="running-count">${summary.running_jobs || 0}</strong> running</span>
+        <span><strong class="queued-count">${summary.queued_jobs || 0}</strong> queued</span>
+        <span><strong class="held-count">${summary.held_jobs || 0}</strong> held</span>
+        <span><strong>${summary.running_gpu_total || 0}</strong> active GPUs</span>
       </section>
 
-      ${renderPresetButtons(cluster, viewState)}
       ${renderControls(cluster, viewState)}
-
-      <section class="facets-grid">
-        ${renderFacetSection("Top Users", "user", summary.user_counts || [], viewState.user)}
-        ${renderFacetSection("Queues", "queue", summary.queue_counts || [], viewState.queue)}
-        ${renderFacetSection("States", "state", summary.state_counts || [], viewState.state)}
-        ${renderFacetSection("Top Projects", "project", summary.project_counts || [], viewState.project)}
-      </section>
-
+      ${renderBreakdowns(summary, viewState)}
       ${renderJobTable(filtered, viewState)}
     </article>
   `;
@@ -516,21 +504,21 @@ function attachClusterHandlers(cluster, payload) {
     });
   }
 
-  for (const button of clustersNode.querySelectorAll("[data-action='clear-filters']")) {
+  for (const button of clustersNode.querySelectorAll("[data-action='clear-all']")) {
     button.addEventListener("click", () => {
       for (const key of FILTER_KEYS) {
         viewState[key] = "";
       }
       viewState.search = "";
+      viewState.selectedPreset = "";
       viewState.page = 1;
       renderClusters(payload);
     });
   }
 
-  for (const button of clustersNode.querySelectorAll("[data-action='clear-preset']")) {
+  for (const button of clustersNode.querySelectorAll("[data-action='toggle-breakdowns']")) {
     button.addEventListener("click", () => {
-      viewState.selectedPreset = "";
-      viewState.page = 1;
+      viewState.showBreakdowns = !viewState.showBreakdowns;
       renderClusters(payload);
     });
   }
@@ -551,13 +539,28 @@ async function refresh() {
     }
     renderSummary(payload);
     renderClusters(payload);
-    lastUpdatedNode.textContent = `Last updated ${new Date(payload.generated_at_epoch * 1000).toLocaleString()}`;
+    lastGeneratedEpoch = payload.generated_at_epoch;
+    renderUpdateAge();
     scheduleRefresh(payload.refresh_seconds);
   } catch (error) {
     lastUpdatedNode.textContent = `Refresh failed: ${error.message}`;
   } finally {
     refreshButton.disabled = false;
   }
+}
+
+function renderUpdateAge() {
+  if (!lastGeneratedEpoch) {
+    return;
+  }
+  const ageSeconds = Math.max(0, Math.floor(Date.now() / 1000 - lastGeneratedEpoch));
+  let ageLabel = "just now";
+  if (ageSeconds >= 60) {
+    ageLabel = `${Math.floor(ageSeconds / 60)}m ago`;
+  } else if (ageSeconds >= 10) {
+    ageLabel = `${ageSeconds}s ago`;
+  }
+  lastUpdatedNode.textContent = `Updated ${ageLabel}`;
 }
 
 function scheduleRefresh(seconds) {
@@ -568,4 +571,5 @@ function scheduleRefresh(seconds) {
 }
 
 refreshButton.addEventListener("click", refresh);
+setInterval(renderUpdateAge, 10000);
 refresh();
