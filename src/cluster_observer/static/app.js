@@ -81,12 +81,13 @@ function renderFilterChips(filters) {
 }
 
 function clusterTab(cluster, isActive) {
-  const statusClass = cluster.ok ? "status-pill" : "status-pill error";
+  const statusClass = cluster.stale ? "status-pill stale" : (cluster.ok ? "status-pill" : "status-pill error");
+  const statusLabel = cluster.stale ? "stale" : (cluster.ok ? "ok" : "error");
   return `
     <button class="cluster-tab${isActive ? " active" : ""}" type="button" data-cluster-name="${escapeHtml(cluster.cluster)}">
       <div class="cluster-tab-head">
         <span class="cluster-tab-name">${escapeHtml(cluster.cluster)}</span>
-        <span class="${statusClass}">${cluster.ok ? "ok" : "error"}</span>
+        <span class="${statusClass}">${statusLabel}</span>
       </div>
       <div class="cluster-tab-meta">
         <span>${cluster.job_count} jobs</span>
@@ -370,8 +371,8 @@ function renderControls(cluster, viewState) {
 }
 
 function renderClusterCard(cluster, viewState) {
-  const statusClass = cluster.ok ? "status-pill" : "status-pill error";
-  if (!cluster.ok) {
+  const statusClass = cluster.stale ? "status-pill stale" : (cluster.ok ? "status-pill" : "status-pill error");
+  if (!cluster.ok && !cluster.stale) {
     return `
       <article class="cluster-card">
         <div class="cluster-head">
@@ -403,8 +404,12 @@ function renderClusterCard(cluster, viewState) {
             <span>${cluster.duration_seconds}s fetch</span>
           </div>
         </div>
-        <span class="${statusClass}">reachable</span>
+        <span class="${statusClass}">${cluster.stale ? "stale data" : "reachable"}</span>
       </div>
+
+      ${cluster.stale
+        ? `<p class="stale-warning">Latest collection failed: ${escapeHtml(cluster.error)}. Showing the last successful snapshot from ${new Date(cluster.last_success_epoch * 1000).toLocaleString()}.</p>`
+        : ""}
 
       <section class="cluster-summary-grid">
         ${summaryCard("Jobs", String(summary.total_jobs || 0))}

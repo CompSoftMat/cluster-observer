@@ -4,10 +4,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import shlex
 import subprocess
 import time
+import logging
 
 from cluster_observer.config import AppConfig, ClusterConfig
 from cluster_observer.filters import build_job_groups, summarize_jobs
 from cluster_observer.models import JobRecord
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _masked_host(host: str) -> str:
@@ -111,6 +115,7 @@ def _ssh_command(cluster: ClusterConfig) -> list[str]:
 def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
     started = time.time()
     masked_host = _masked_host(cluster.host)
+    LOGGER.info("cluster collection started cluster=%s", cluster.name)
     try:
         proc = subprocess.run(
             _ssh_command(cluster),
@@ -121,7 +126,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
         )
         parsed_jobs = _parse_qstat_output(proc.stdout, cluster)
         job_groups, jobs = build_job_groups(cluster, parsed_jobs)
-        return {
+        result = {
             "cluster": cluster.name,
             "host": masked_host,
             "ok": True,
@@ -131,7 +136,19 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "job_count": len(jobs),
             "duration_seconds": round(time.time() - started, 2),
         }
+        LOGGER.info(
+            "cluster collection succeeded cluster=%s jobs=%d duration_seconds=%.2f",
+            cluster.name,
+            result["job_count"],
+            result["duration_seconds"],
+        )
+        return result
     except subprocess.TimeoutExpired:
+        LOGGER.warning(
+            "cluster collection timed out cluster=%s timeout_seconds=%d",
+            cluster.name,
+            timeout_seconds,
+        )
         return {
             "cluster": cluster.name,
             "host": masked_host,
@@ -145,11 +162,31 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
         }
     except subprocess.CalledProcessError as exc:
         message = exc.stderr.strip() or exc.stdout.strip() or "ssh/qstat failed"
+        LOGGER.warning(
+            "cluster collection failed cluster=%s returncode=%s error=%s",
+            cluster.name,
+            exc.returncode,
+            _sanitize_message(message, cluster),
+        )
         return {
             "cluster": cluster.name,
             "host": masked_host,
             "ok": False,
             "error": _sanitize_message(message, cluster),
+            "jobs": [],
+            "job_groups": [],
+            "summary": summarize_jobs([], cluster),
+            "job_count": 0,
+            "duration_seconds": round(time.time() - started, 2),
+        }
+    except OSError as exc:
+        message = _sanitize_message(str(exc), cluster)
+        LOGGER.warning("cluster collection could not start cluster=%s error=%s", cluster.name, message)
+        return {
+            "cluster": cluster.name,
+            "host": masked_host,
+            "ok": False,
+            "error": message,
             "jobs": [],
             "job_groups": [],
             "summary": summarize_jobs([], cluster),

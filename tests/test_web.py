@@ -4,20 +4,11 @@ import json
 import unittest
 from unittest.mock import patch
 
-from cluster_observer.config import AppConfig
 from cluster_observer.web import DashboardHandler
 
 
 class WebTests(unittest.TestCase):
     def test_api_jobs_returns_json_payload(self) -> None:
-        config = AppConfig(
-            dashboard_title="Test",
-            host="127.0.0.1",
-            port=0,
-            refresh_seconds=30,
-            request_timeout_seconds=5,
-            clusters=(),
-        )
         payload = {
             "dashboard_title": "Test",
             "generated_at_epoch": 1,
@@ -27,9 +18,10 @@ class WebTests(unittest.TestCase):
             "total_clusters": 0,
             "clusters": [],
         }
-        DashboardHandler.config = config
+        DashboardHandler.collector = unittest.mock.Mock()
+        DashboardHandler.collector.snapshot.return_value = payload
 
-        with patch("cluster_observer.web.collect_all_clusters", return_value=payload):
+        with patch.object(DashboardHandler, "log_request"):
             handler = DashboardHandler.__new__(DashboardHandler)
             handler.path = "/api/jobs"
             sent: dict[str, object] = {}

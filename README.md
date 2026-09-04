@@ -33,6 +33,11 @@ The browser UI is built around one cluster-wide job table plus live filters:
 - summary cards and top-user / top-queue breakdowns
 - client-side search, sorting, and pagination for large job sets
 
+Scheduler collection is independent of browser traffic. The service collects each
+cluster once at startup, refreshes the shared snapshot in the background, and
+serves that cached snapshot to every browser. If a cluster temporarily fails,
+the dashboard keeps its last successful data visible and marks it as stale.
+
 Other "privacy" features:
 - private runtime config loaded from `~/.config/cluster-observer/config.toml`
 - Host/IP values shown in the browser are masked before they reach the frontend.
@@ -116,6 +121,14 @@ Config path and bind address may be overridden:
 
 ```bash
 cluster-observer --config ~/.config/cluster-observer/config.toml --host 0.0.0.0 --port 8080
+```
+
+The service logs startup, every collection cycle, per-cluster results, stale-data
+fallbacks, and HTTP requests to standard error. Logging defaults to `INFO` and
+can be changed at startup:
+
+```bash
+cluster-observer --log-level DEBUG
 ```
 
 ## Security

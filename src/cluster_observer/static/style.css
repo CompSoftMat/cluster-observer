@@ -288,6 +288,21 @@ button:disabled {
   border-color: rgba(228, 104, 118, 0.24);
 }
 
+.status-pill.stale {
+  background: rgba(230, 195, 132, 0.1);
+  color: var(--warn);
+  border-color: rgba(230, 195, 132, 0.24);
+}
+
+.stale-warning {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(230, 195, 132, 0.08);
+  color: var(--warn);
+  border: 1px solid rgba(230, 195, 132, 0.18);
+}
+
 .table-shell {
   overflow-x: auto;
   border-radius: 12px;
