@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
 import tomllib
@@ -28,6 +28,7 @@ class AppConfig:
     refresh_seconds: int
     request_timeout_seconds: int
     clusters: tuple[ClusterConfig, ...]
+    user_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _load_file(path: Path) -> dict:
@@ -46,6 +47,19 @@ def _normalize_filter_map(raw: dict) -> dict[str, tuple[str, ...]]:
         if values:
             filters[str(key)] = values
     return filters
+
+
+def _normalize_user_aliases(raw: object, prefix: str = "") -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    aliases: dict[str, str] = {}
+    for raw_key, raw_value in raw.items():
+        key = f"{prefix}.{raw_key}" if prefix else str(raw_key)
+        if isinstance(raw_value, dict):
+            aliases.update(_normalize_user_aliases(raw_value, key))
+        elif str(raw_value):
+            aliases[key] = str(raw_value)
+    return aliases
 
 
 def _cluster_from_dict(raw: dict) -> ClusterConfig:
@@ -92,6 +106,7 @@ def load_config(config_path: str | None = None) -> AppConfig:
     path = Path(config_path).expanduser() if config_path else DEFAULT_CONFIG_PATH
     raw = _load_file(path)
     server = raw.get("server", {})
+    user_aliases = _normalize_user_aliases(raw.get("user_aliases", {}))
     clusters = tuple(_cluster_from_dict(item) for item in raw.get("clusters", []))
     if not clusters:
         raise ValueError(f"no clusters configured in {path}")
@@ -102,4 +117,5 @@ def load_config(config_path: str | None = None) -> AppConfig:
         refresh_seconds=int(server.get("refresh_seconds", 30)),
         request_timeout_seconds=int(server.get("request_timeout_seconds", 20)),
         clusters=clusters,
+        user_aliases=user_aliases,
     )

@@ -24,6 +24,7 @@ Job Id: 200[1].gaas
     project = proj-a
     resources_used.walltime = 00:10:00
     Resource_List.walltime = 01:00:00
+    Resource_List.ncpus = 8
     Resource_List.ngpus = 1
     schedstart = 2026-07-01 10:05:00
 
@@ -33,6 +34,7 @@ Job Id: 201.gaas
     ctime = 2026-07-01 10:02:00
     queue = gpu_debug
     project = proj-b
+    Resource_List.select = 2:ncpus=16:ngpus=1+1:ncpus=4
     Resource_List.walltime = 02:00:00
     estimated.start_time = 2026-07-01 11:00:00
 """
@@ -51,6 +53,11 @@ class QstatTests(unittest.TestCase):
 
         self.assertEqual([job.job_id for job in jobs], ["200[1].gaas", "201.gaas"])
         self.assertEqual(jobs[0].project, "proj-a")
+        self.assertEqual(jobs[0].cpu, "8")
+        self.assertEqual(jobs[0].gpu, "1")
+        self.assertEqual(jobs[1].cpu, "36")
+        self.assertEqual(jobs[1].gpu, "2")
+        self.assertEqual(jobs[1].resource_shape, "2x (16 CPU / 1 GPU) + 4 CPU")
         self.assertEqual(jobs[0].submitted_at, "2026-07-01 10:01:00")
         self.assertEqual(jobs[1].submitted_at, "2026-07-01 10:02:00")
         self.assertEqual(jobs[1].scheduled_start_time, "2026-07-01 11:00:00")
@@ -67,9 +74,19 @@ class QstatTests(unittest.TestCase):
             "cluster_observer.qstat.subprocess.run",
             return_value=SimpleNamespace(stdout=QSTAT_OUTPUT),
         ):
-            payload = collect_cluster_jobs(cluster, timeout_seconds=5)
+            payload = collect_cluster_jobs(
+                cluster,
+                timeout_seconds=5,
+                user_aliases={"alice": "Alice A."},
+            )
 
         self.assertTrue(payload["ok"])
         self.assertEqual([job["job_id"] for job in payload["jobs"]], ["200[1].gaas"])
+        self.assertEqual(payload["jobs"][0]["cpu"], "8")
+        self.assertEqual(payload["jobs"][0]["user_alias"], "Alice A.")
+        self.assertEqual(
+            payload["summary"]["user_counts"][0],
+            {"value": "alice", "label": "Alice A. (alice)", "count": 1},
+        )
         self.assertEqual(payload["job_groups"][0]["job_count"], 1)
         self.assertEqual(payload["summary"]["total_jobs"], 1)

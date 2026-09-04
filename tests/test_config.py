@@ -9,6 +9,29 @@ from cluster_observer.config import load_config
 
 
 class ConfigTests(unittest.TestCase):
+    def test_loads_global_user_aliases(self) -> None:
+        config_text = textwrap.dedent(
+            """
+            [user_aliases]
+            leonardo004 = "leogabac"
+            yusheng.lei = "Yusheng"
+
+            [[clusters]]
+            name = "gaas"
+            host = "gaas.example"
+            user = "leonardo004"
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "config.toml"
+            path.write_text(config_text)
+            config = load_config(str(path))
+
+        self.assertEqual(
+            config.user_aliases,
+            {"leonardo004": "leogabac", "yusheng.lei": "Yusheng"},
+        )
+
     def test_loads_named_filter_groups(self) -> None:
         config_text = textwrap.dedent(
             """

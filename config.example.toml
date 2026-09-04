@@ -5,6 +5,10 @@ port = 8080
 refresh_seconds = 30
 request_timeout_seconds = 20
 
+[user_aliases]
+your-username = "Your Name"
+"dotted.username" = "Friendly Name"
+
 [[clusters]]
 name = "cluster-a"
 host = "login.cluster-a.example"

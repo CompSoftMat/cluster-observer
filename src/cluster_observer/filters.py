@@ -37,9 +37,29 @@ def _sorted_counts(counter: Counter[str]) -> list[dict[str, str | int]]:
     ]
 
 
+def _sorted_user_counts(
+    counter: Counter[str], user_aliases: dict[str, str] | None
+) -> list[dict[str, str | int]]:
+    aliases = user_aliases or {}
+    results: list[dict[str, str | int]] = []
+    for user, count in sorted(counter.items(), key=lambda item: (-item[1], item[0])):
+        item: dict[str, str | int] = {"value": user, "count": count}
+        if user in aliases:
+            item["label"] = f"{aliases[user]} ({user})"
+        results.append(item)
+    return results
+
+
 def _gpu_count(job: JobRecord) -> int:
     try:
         return int(job.gpu or "0")
+    except ValueError:
+        return 0
+
+
+def _cpu_count(job: JobRecord) -> int:
+    try:
+        return int(job.cpu or "0")
     except ValueError:
         return 0
 
@@ -55,7 +75,11 @@ def _configured_project_values(cluster: ClusterConfig) -> tuple[str, ...]:
     return tuple(values)
 
 
-def summarize_jobs(jobs: list[JobRecord], cluster: ClusterConfig | None = None) -> dict:
+def summarize_jobs(
+    jobs: list[JobRecord],
+    cluster: ClusterConfig | None = None,
+    user_aliases: dict[str, str] | None = None,
+) -> dict:
     state_counts = Counter((job.state or "").upper() or "-" for job in jobs)
     user_counts = Counter(job.user or "-" for job in jobs)
     queue_counts = Counter(job.queue or "-" for job in jobs)
@@ -70,9 +94,11 @@ def summarize_jobs(jobs: list[JobRecord], cluster: ClusterConfig | None = None) 
             }
         )
     running_gpu_by_user = Counter()
+    running_cpu_total = 0
     for job in jobs:
         if (job.state or "").upper() == "R":
             running_gpu_by_user[job.user or "-"] += _gpu_count(job)
+            running_cpu_total += _cpu_count(job)
     return {
         "total_jobs": len(jobs),
         "running_jobs": state_counts.get("R", 0),
@@ -84,9 +110,10 @@ def summarize_jobs(jobs: list[JobRecord], cluster: ClusterConfig | None = None) 
         "users_count": len(user_counts),
         "queues_count": len(queue_counts),
         "projects_count": len(project_counts),
+        "running_cpu_total": running_cpu_total,
         "running_gpu_total": sum(running_gpu_by_user.values()),
         "state_counts": _sorted_counts(state_counts),
-        "user_counts": _sorted_counts(user_counts),
+        "user_counts": _sorted_user_counts(user_counts, user_aliases),
         "queue_counts": _sorted_counts(queue_counts),
         "project_counts": _sorted_counts(project_counts),
         "running_gpu_by_user": [

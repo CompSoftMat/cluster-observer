@@ -31,6 +31,7 @@ class FilterTests(unittest.TestCase):
                 used_walltime="00:10:00",
                 requested_walltime="01:00:00",
                 scheduled_start_time="",
+                cpu="8",
             ),
             JobRecord(
                 cluster="gaas",
@@ -77,6 +78,7 @@ class FilterTests(unittest.TestCase):
                 used_walltime="00:10:00",
                 requested_walltime="01:00:00",
                 scheduled_start_time="",
+                cpu="8",
             ),
             JobRecord(
                 cluster="gaas",
@@ -112,6 +114,7 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(summary["running_jobs"], 1)
         self.assertEqual(summary["queued_jobs"], 1)
         self.assertEqual(summary["held_jobs"], 1)
+        self.assertEqual(summary["running_cpu_total"], 8)
         self.assertEqual(summary["running_gpu_total"], 2)
         self.assertEqual(summary["user_counts"][0], {"value": "alice", "count": 2})
         self.assertEqual(summary["queue_counts"][0], {"value": "gpu_free", "count": 2})

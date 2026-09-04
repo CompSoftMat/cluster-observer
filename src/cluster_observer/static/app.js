@@ -10,6 +10,7 @@ const FACET_PREVIEW_LIMIT = 10;
 const FILTER_KEYS = ["user", "queue", "state", "project"];
 const STATE_ORDER = { R: 0, Q: 1, H: 2 };
 const SLOW_FETCH_SECONDS = 5;
+const PREFERRED_USER_KEY = "cluster-observer.preferred-user";
 
 let refreshHandle = null;
 let lastGeneratedEpoch = null;
@@ -52,9 +53,45 @@ function ensureViewState(clusterName) {
       sortDirection: "asc",
       page: 1,
       showBreakdowns: false,
+      preferredUserLoaded: false,
     };
   }
   return clusterViewState[clusterName];
+}
+
+function loadPreferredUser() {
+  try {
+    return window.localStorage.getItem(PREFERRED_USER_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function savePreferredUser(user) {
+  try {
+    if (user) {
+      window.localStorage.setItem(PREFERRED_USER_KEY, user);
+    } else {
+      window.localStorage.removeItem(PREFERRED_USER_KEY);
+    }
+  } catch (error) {
+    // Browsers can disable local storage; filtering should still work for this visit.
+  }
+}
+
+function applyPreferredUser(cluster, viewState) {
+  if (viewState.preferredUserLoaded) {
+    return;
+  }
+  const users = cluster.summary?.user_counts || [];
+  if (!cluster.ok && !users.length) {
+    return;
+  }
+  viewState.preferredUserLoaded = true;
+  const preferredUser = loadPreferredUser();
+  if (preferredUser) {
+    viewState.user = preferredUser;
+  }
 }
 
 function renderSummary(payload) {
@@ -95,7 +132,7 @@ function clusterTab(cluster, isActive) {
         <span><strong class="running-count">R ${summary.running_jobs || 0}</strong></span>
         <span><strong class="queued-count">Q ${summary.queued_jobs || 0}</strong></span>
         ${(summary.held_jobs || 0) > 0 ? `<span><strong class="held-count">H ${summary.held_jobs}</strong></span>` : ""}
-        <span>${summary.running_gpu_total || 0} GPU</span>
+        <span>${summary.running_cpu_total || 0} CPU · ${summary.running_gpu_total || 0} GPU</span>
         ${fetchDetail}
       </div>
     </button>
@@ -112,10 +149,15 @@ function sortCountItems(items) {
 }
 
 function optionMarkup(label, items, selectedValue) {
+  const hasSelectedValue = items.some(item => item.value === selectedValue);
+  const rememberedOption = selectedValue && !hasSelectedValue
+    ? `<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)} (0)</option>`
+    : "";
   return `
     <option value="">All ${escapeHtml(label)}</option>
+    ${rememberedOption}
     ${sortCountItems(items)
-      .map(item => `<option value="${escapeHtml(item.value)}"${item.value === selectedValue ? " selected" : ""}>${escapeHtml(item.value)} (${item.count})</option>`)
+      .map(item => `<option value="${escapeHtml(item.value)}"${item.value === selectedValue ? " selected" : ""}>${escapeHtml(item.label || item.value)} (${item.count})</option>`)
       .join("")}
   `;
 }
@@ -152,6 +194,7 @@ function jobMatchesView(job, viewState, presetFilters) {
   const haystack = [
     job.job_id,
     job.user,
+    job.user_alias,
     job.queue,
     job.project,
     job.state,
@@ -167,8 +210,8 @@ function numericValue(value) {
 }
 
 function valueForSort(job, sortKey) {
-  if (sortKey === "gpu") {
-    return numericValue(job.gpu);
+  if (sortKey === "resources") {
+    return numericValue(job.gpu) * 1000000 + numericValue(job.cpu);
   }
   if (sortKey === "state") {
     const normalized = (job.state || "").toUpperCase();
@@ -202,10 +245,31 @@ function facetButton(key, item, activeValue) {
   const isActive = item.value === activeValue;
   return `
     <button class="facet-chip${isActive ? " active" : ""}" type="button" data-facet-key="${escapeHtml(key)}" data-facet-value="${escapeHtml(item.value)}">
-      <span>${escapeHtml(item.value)}</span>
+      <span>${escapeHtml(item.label || item.value)}</span>
       <strong>${item.count}</strong>
     </button>
   `;
+}
+
+function userLabel(job) {
+  if (!job.user_alias) {
+    return job.user || "-";
+  }
+  return `${job.user_alias} (${job.user})`;
+}
+
+function resourceLabel(job) {
+  if (job.resource_shape) {
+    return job.resource_shape.replaceAll("x (", "× (");
+  }
+  const resources = [];
+  if (numericValue(job.cpu) > 0) {
+    resources.push(`${job.cpu} CPU`);
+  }
+  if (numericValue(job.gpu) > 0) {
+    resources.push(`${job.gpu} GPU`);
+  }
+  return resources.join(" / ") || "-";
 }
 
 function renderFacetSection(title, key, items, activeValue) {
@@ -235,10 +299,10 @@ function jobRow(job) {
         <code>${escapeHtml(job.job_id || "-")}</code>
         <span class="row-secondary">${escapeHtml(job.project || "no project")} · ${escapeHtml(job.submitted_at || "submit time unavailable")}</span>
       </td>
-      <td data-label="User" class="col-user">${escapeHtml(job.user || "-")}</td>
+      <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
       <td data-label="State" class="col-state"><span class="${stateClass(job.state)}">${escapeHtml(job.state || "-")}</span></td>
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
-      <td data-label="GPUs" class="col-gpu">${escapeHtml(job.gpu || "-")}</td>
+      <td data-label="Resources" class="col-resource">${escapeHtml(resourceLabel(job))}</td>
       <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}</td>
       <td data-label="Scheduled" class="col-time">${escapeHtml(job.scheduled_start_time || "-")}</td>
     </tr>
@@ -292,7 +356,7 @@ function renderJobTable(jobs, viewState) {
               ${sortableHeader("User", "user", viewState)}
               ${sortableHeader("State", "state", viewState)}
               ${sortableHeader("Queue", "queue", viewState)}
-              ${sortableHeader("GPUs", "gpu", viewState)}
+              ${sortableHeader("CPU / GPU", "resources", viewState)}
               ${sortableHeader("Walltime", "used_walltime", viewState)}
               ${sortableHeader("Scheduled", "scheduled_start_time", viewState)}
             </tr>
@@ -413,7 +477,7 @@ function renderClusterCard(cluster, viewState) {
         <span><strong class="running-count">${summary.running_jobs || 0}</strong> running</span>
         <span><strong class="queued-count">${summary.queued_jobs || 0}</strong> queued</span>
         <span><strong class="held-count">${summary.held_jobs || 0}</strong> held</span>
-        <span><strong>${summary.running_gpu_total || 0}</strong> active GPUs</span>
+        <span><strong>${summary.running_cpu_total || 0} CPU / ${summary.running_gpu_total || 0} GPU</strong> active</span>
       </section>
 
       ${renderControls(cluster, viewState)}
@@ -437,6 +501,7 @@ function renderClusters(payload) {
     payload.clusters.find(cluster => cluster.cluster === activeClusterName) || payload.clusters[0];
   activeClusterName = selectedCluster.cluster;
   const viewState = ensureViewState(activeClusterName);
+  applyPreferredUser(selectedCluster, viewState);
 
   clusterNavNode.innerHTML = `
     <p class="cluster-nav-title">Clusters</p>
@@ -461,6 +526,9 @@ function attachClusterHandlers(cluster, payload) {
     const handler = element.tagName === "INPUT" ? "input" : "change";
     element.addEventListener(handler, () => {
       viewState[element.dataset.filterKey] = element.value;
+      if (element.dataset.filterKey === "user") {
+        savePreferredUser(element.value);
+      }
       viewState.page = 1;
       renderClusters(payload);
     });

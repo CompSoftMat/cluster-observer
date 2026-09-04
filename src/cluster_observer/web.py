@@ -87,6 +87,7 @@ def _override_config(config: AppConfig, host: str | None, port: int | None) -> A
         refresh_seconds=config.refresh_seconds,
         request_timeout_seconds=config.request_timeout_seconds,
         clusters=config.clusters,
+        user_aliases=config.user_aliases,
     )
 
 

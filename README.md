@@ -22,7 +22,7 @@ For each configured cluster, the dashboard displays jobs with:
 - job state
 - submit time
 - queue
-- GPU count
+- requested CPU and GPU counts
 - used walltime
 - requested walltime
 - scheduled start time, when exposed by the scheduler
@@ -32,6 +32,7 @@ The browser UI is built around one cluster-wide job table plus live filters:
 - interactive filtering by user, queue, state, and project
 - summary cards and top-user / top-queue breakdowns
 - client-side search, sorting, and pagination for large job sets
+- a remembered user filter for each browser, applied automatically on later visits
 
 Scheduler collection is independent of browser traffic. The service collects each
 cluster once at startup, refreshes the shared snapshot in the background, and
@@ -102,6 +103,10 @@ Configuration notes:
 - `user` defaults to the local `$USER` if omitted.
 - `qstat_args` defaults to `["-f"]`. For clusters where you want PBS arrays or batched jobs expanded into member jobs, try `["-t", "-f"]`.
 - SSH keys must already be configured. The app does not manage passwords or interactive prompts.
+- The optional top-level `[user_aliases]` table maps scheduler usernames to
+  friendlier display names. Filtering still uses the real scheduler username;
+  aliased users appear as `alias (username)` in the dashboard. Quote usernames
+  containing dots in TOML, for example `"yusheng.lei" = "Yusheng"`.
 
 ## Install
 

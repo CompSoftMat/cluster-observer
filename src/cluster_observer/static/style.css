@@ -588,7 +588,7 @@ td code {
 
 td.col-time,
 td.col-job,
-td.col-gpu,
+td.col-resource,
 td.col-state,
 td.col-project {
   white-space: nowrap;
@@ -596,7 +596,7 @@ td.col-project {
 
 td.col-job,
 td.col-time,
-td.col-gpu {
+td.col-resource {
   font-variant-numeric: tabular-nums;
 }
 

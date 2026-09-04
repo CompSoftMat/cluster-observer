@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 import shlex
 import subprocess
 import time
-import logging
 
 from cluster_observer.config import AppConfig, ClusterConfig
 from cluster_observer.filters import build_job_groups, summarize_jobs
@@ -12,6 +12,44 @@ from cluster_observer.models import JobRecord
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _parse_select_resources(value: str) -> dict[str, str]:
+    totals = {"cpu": 0, "gpu": 0}
+    for chunk in value.split("+"):
+        parts = chunk.split(":")
+        multiplier = int(parts[0]) if parts and parts[0].isdigit() else 1
+        for part in parts[1:] if parts and parts[0].isdigit() else parts:
+            key, separator, raw_count = part.partition("=")
+            if not separator or not raw_count.isdigit():
+                continue
+            if key == "ncpus":
+                totals["cpu"] += multiplier * int(raw_count)
+            elif key == "ngpus":
+                totals["gpu"] += multiplier * int(raw_count)
+    return {key: str(count) for key, count in totals.items() if count}
+
+
+def _format_select_resources(value: str) -> str:
+    chunks: list[str] = []
+    for chunk in value.split("+"):
+        parts = chunk.split(":")
+        multiplier = int(parts[0]) if parts and parts[0].isdigit() else 1
+        resource_parts = parts[1:] if parts and parts[0].isdigit() else parts
+        resources: list[str] = []
+        for part in resource_parts:
+            key, separator, raw_count = part.partition("=")
+            if not separator or not raw_count.isdigit() or int(raw_count) == 0:
+                continue
+            if key == "ncpus":
+                resources.append(f"{raw_count} CPU")
+            elif key == "ngpus":
+                resources.append(f"{raw_count} GPU")
+        if not resources:
+            continue
+        label = " / ".join(resources)
+        chunks.append(f"{multiplier}x ({label})" if multiplier > 1 else label)
+    return " + ".join(chunks)
 
 
 def _masked_host(host: str) -> str:
@@ -64,10 +102,12 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
                 project=current.get("project", ""),
                 submitted_at=current.get("submitted_at", ""),
                 queue=current.get("queue", ""),
+                cpu=current.get("cpu", ""),
                 gpu=current.get("gpu", ""),
                 used_walltime=current.get("used_walltime", ""),
                 requested_walltime=current.get("requested_walltime", ""),
                 scheduled_start_time=current.get("scheduled_start_time", ""),
+                resource_shape=current.get("resource_shape", ""),
             )
         )
         current.clear()
@@ -96,6 +136,12 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
             current["requested_walltime"] = value
         elif key == "Resource_List.ngpus":
             current["gpu"] = value
+        elif key == "Resource_List.ncpus":
+            current["cpu"] = value
+        elif key == "Resource_List.select":
+            current["resource_shape"] = _format_select_resources(value)
+            for resource, count in _parse_select_resources(value).items():
+                current.setdefault(resource, count)
         elif key in {"estimated.start_time", "estimated.exec_time", "schedstart"}:
             current["scheduled_start_time"] = value
         elif key == "project":
@@ -112,7 +158,11 @@ def _ssh_command(cluster: ClusterConfig) -> list[str]:
     return ["ssh", *cluster.ssh_options, destination, remote_command]
 
 
-def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
+def collect_cluster_jobs(
+    cluster: ClusterConfig,
+    timeout_seconds: int,
+    user_aliases: dict[str, str] | None = None,
+) -> dict:
     started = time.time()
     masked_host = _masked_host(cluster.host)
     LOGGER.info("cluster collection started cluster=%s", cluster.name)
@@ -130,9 +180,9 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "cluster": cluster.name,
             "host": masked_host,
             "ok": True,
-            "jobs": [job.to_dict() for job in jobs],
-            "job_groups": [group.to_dict() for group in job_groups],
-            "summary": summarize_jobs(jobs, cluster),
+            "jobs": [job.to_dict(user_aliases) for job in jobs],
+            "job_groups": [group.to_dict(user_aliases) for group in job_groups],
+            "summary": summarize_jobs(jobs, cluster, user_aliases),
             "job_count": len(jobs),
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -156,7 +206,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": f"ssh command timed out after {timeout_seconds}s",
             "jobs": [],
             "job_groups": [],
-            "summary": summarize_jobs([], cluster),
+            "summary": summarize_jobs([], cluster, user_aliases),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -175,7 +225,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": _sanitize_message(message, cluster),
             "jobs": [],
             "job_groups": [],
-            "summary": summarize_jobs([], cluster),
+            "summary": summarize_jobs([], cluster, user_aliases),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -189,7 +239,7 @@ def collect_cluster_jobs(cluster: ClusterConfig, timeout_seconds: int) -> dict:
             "error": message,
             "jobs": [],
             "job_groups": [],
-            "summary": summarize_jobs([], cluster),
+            "summary": summarize_jobs([], cluster, user_aliases),
             "job_count": 0,
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -199,7 +249,12 @@ def collect_all_clusters(config: AppConfig) -> dict:
     clusters: list[dict] = []
     with ThreadPoolExecutor(max_workers=len(config.clusters)) as executor:
         futures = {
-            executor.submit(collect_cluster_jobs, cluster, config.request_timeout_seconds): cluster
+            executor.submit(
+                collect_cluster_jobs,
+                cluster,
+                config.request_timeout_seconds,
+                config.user_aliases,
+            ): cluster
             for cluster in config.clusters
         }
         for future in as_completed(futures):
