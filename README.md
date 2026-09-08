@@ -34,10 +34,12 @@ The browser UI is built around one cluster-wide job table plus live filters:
 - client-side search, sorting, and pagination for large job sets
 - a remembered user filter for each browser, applied automatically on later visits
 
-Scheduler collection is independent of browser traffic. The service collects each
-cluster once at startup, refreshes the shared snapshot in the background, and
-serves that cached snapshot to every browser. If a cluster temporarily fails,
-the dashboard keeps its last successful data visible and marks it as stale.
+Scheduler collection is independent of browser traffic. The service lazily
+collects on the first dashboard request, then serves the shared snapshot to
+every browser for 15 minutes. A normal page load only refreshes an expired
+snapshot; the Reload button explicitly refreshes it immediately. If a cluster
+temporarily fails, the dashboard keeps its last successful data visible and
+marks it as stale.
 
 Other "privacy" features:
 - private runtime config loaded from `~/.config/cluster-observer/config.toml`
@@ -102,6 +104,10 @@ Configuration notes:
 - Legacy `filters = ...` and `project = "..."` are still accepted and are mapped into a default group for backward compatibility.
 - `user` defaults to the local `$USER` if omitted.
 - `qstat_args` defaults to `["-f"]`. For clusters where you want PBS arrays or batched jobs expanded into member jobs, try `["-t", "-f"]`.
+- Collection is demand-driven: cached data is reused for 15 minutes. Opening
+  the site after that period refreshes it; the Reload button always forces a
+  refresh. The legacy `refresh_seconds` setting no longer schedules browser
+  polling.
 - SSH keys must already be configured. The app does not manage passwords or interactive prompts.
 - The optional top-level `[user_aliases]` table maps scheduler usernames to
   friendlier display names. Filtering still uses the real scheduler username;

@@ -49,6 +49,23 @@ class CollectorTests(unittest.TestCase):
         self.assertFalse(snapshot["clusters"][0]["stale"])
         self.assertEqual(snapshot["clusters"][0]["last_success_epoch"], 100)
 
+    def test_get_snapshot_collects_once_until_forced(self) -> None:
+        collector = SnapshotCollector(self.config, max_age_seconds=900)
+        first = payload(2_000_000_000, cluster_result(ok=True, jobs=2))
+        second = payload(2_000_000_001, cluster_result(ok=True, jobs=3))
+        with patch(
+            "cluster_observer.collector.collect_all_clusters",
+            side_effect=[first, second],
+        ) as collect:
+            with patch("cluster_observer.collector.time.time", return_value=2_000_000_001):
+                cached = collector.get_snapshot()
+                self.assertEqual(collector.get_snapshot(), cached)
+                forced = collector.get_snapshot(force=True)
+
+        self.assertEqual(collect.call_count, 2)
+        self.assertEqual(cached["total_jobs"], 2)
+        self.assertEqual(forced["total_jobs"], 3)
+
     def test_failed_refresh_preserves_last_successful_cluster_data(self) -> None:
         collector = SnapshotCollector(self.config)
         responses = [

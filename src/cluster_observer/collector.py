@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from threading import Event, Lock, Thread
+from threading import Lock
 import time
 
 from cluster_observer.config import AppConfig
@@ -9,22 +9,54 @@ from cluster_observer.qstat import collect_all_clusters
 
 
 LOGGER = logging.getLogger(__name__)
+CACHE_MAX_AGE_SECONDS = 15 * 60
 
 
 class SnapshotCollector:
     """Collect scheduler state independently of dashboard requests."""
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, max_age_seconds: int = CACHE_MAX_AGE_SECONDS) -> None:
         self.config = config
+        self.max_age_seconds = max_age_seconds
         self._snapshot: dict | None = None
         self._last_success: dict[str, dict] = {}
         self._lock = Lock()
-        self._stop = Event()
-        self._thread: Thread | None = None
+        self._refresh_lock = Lock()
 
     def refresh(self) -> dict:
+        with self._refresh_lock:
+            return self._refresh_unlocked()
+
+    def get_snapshot(self, force: bool = False) -> dict:
+        with self._lock:
+            current = self._snapshot
+            observed_epoch = current["generated_at_epoch"] if current else None
+            current_age = (
+                time.time() - observed_epoch if observed_epoch is not None else None
+            )
+        if not force and current is not None and current_age is not None and current_age < self.max_age_seconds:
+            LOGGER.info("serving cached snapshot age_seconds=%d", int(current_age))
+            return current
+
+        reason = "manual" if force else ("initial" if current is None else "expired")
+        LOGGER.info("refresh required reason=%s", reason)
+        with self._refresh_lock:
+            with self._lock:
+                latest = self._snapshot
+                latest_epoch = latest["generated_at_epoch"] if latest else None
+                latest_age = time.time() - latest_epoch if latest_epoch is not None else None
+                # Another request may have refreshed while this request waited.
+                if observed_epoch != latest_epoch and latest is not None:
+                    if force or (latest_age is not None and latest_age < self.max_age_seconds):
+                        LOGGER.info("using snapshot refreshed by another request")
+                        return latest
+                if not force and latest is not None and latest_age is not None and latest_age < self.max_age_seconds:
+                    return latest
+            return self._refresh_unlocked()
+
+    def _refresh_unlocked(self) -> dict:
         started = time.monotonic()
-        LOGGER.info("collection cycle started clusters=%d", len(self.config.clusters))
+        LOGGER.info("collection started clusters=%d", len(self.config.clusters))
         fresh = collect_all_clusters(self.config)
         merged_clusters: list[dict] = []
 
@@ -81,29 +113,3 @@ class SnapshotCollector:
     def snapshot(self) -> dict | None:
         with self._lock:
             return self._snapshot
-
-    def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = Thread(
-            target=self._run,
-            name="cluster-observer-collector",
-            daemon=True,
-        )
-        self._thread.start()
-        LOGGER.info("background collector started interval_seconds=%d", self.config.refresh_seconds)
-
-    def stop(self) -> None:
-        self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-        LOGGER.info("background collector stopped")
-
-    def _run(self) -> None:
-        while not self._stop.wait(self.config.refresh_seconds):
-            try:
-                self.refresh()
-            except Exception:
-                # A bad cycle must not kill future refreshes or discard the cache.
-                LOGGER.exception("collection cycle failed unexpectedly; keeping cached snapshot")

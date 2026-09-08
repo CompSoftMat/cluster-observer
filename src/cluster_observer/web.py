@@ -6,6 +6,7 @@ import logging
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
+from urllib.parse import parse_qs, urlsplit
 
 from cluster_observer.config import AppConfig, load_config
 from cluster_observer.collector import SnapshotCollector
@@ -23,20 +24,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
     collector: SnapshotCollector
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/":
+        path = urlsplit(self.path).path
+        if path == "/":
             self._send_bytes(_read_static_file("index.html"), "text/html; charset=utf-8")
             return
-        if self.path == "/static/style.css":
+        if path == "/static/style.css":
             self._send_bytes(_read_static_file("style.css"), "text/css; charset=utf-8")
             return
-        if self.path == "/static/app.js":
+        if path == "/static/app.js":
             self._send_bytes(_read_static_file("app.js"), "application/javascript; charset=utf-8")
             return
-        if self.path == "/api/jobs":
-            payload = self.collector.snapshot()
-            if payload is None:
+        if path == "/api/jobs":
+            force_refresh = parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]
+            try:
+                payload = self.collector.get_snapshot(force=force_refresh)
+            except Exception:
+                LOGGER.exception("request-triggered collection failed")
                 self._send_bytes(
-                    json.dumps({"error": "initial collection is not ready"}).encode("utf-8"),
+                    json.dumps({"error": "cluster collection failed"}).encode("utf-8"),
                     "application/json; charset=utf-8",
                     status=HTTPStatus.SERVICE_UNAVAILABLE,
                 )
@@ -101,9 +106,6 @@ def main() -> int:
     config = _override_config(load_config(args.config), args.host, args.port)
 
     collector = SnapshotCollector(config)
-    LOGGER.info("performing initial collection before accepting requests")
-    collector.refresh()
-    collector.start()
     DashboardHandler.collector = collector
     server = ThreadingHTTPServer((config.host, config.port), DashboardHandler)
     LOGGER.info("cluster-observer listening on http://%s:%d", config.host, config.port)
@@ -113,5 +115,4 @@ def main() -> int:
         pass
     finally:
         server.server_close()
-        collector.stop()
     return 0

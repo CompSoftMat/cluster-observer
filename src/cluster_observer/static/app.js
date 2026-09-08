@@ -12,7 +12,6 @@ const STATE_ORDER = { R: 0, Q: 1, H: 2 };
 const SLOW_FETCH_SECONDS = 5;
 const PREFERRED_USER_KEY = "cluster-observer.preferred-user";
 
-let refreshHandle = null;
 let lastGeneratedEpoch = null;
 let activeClusterName = null;
 const clusterViewState = {};
@@ -592,10 +591,11 @@ function attachClusterHandlers(cluster, payload) {
   }
 }
 
-async function refresh() {
+async function refresh(force = false) {
   refreshButton.disabled = true;
   try {
-    const response = await fetch("/api/jobs", { cache: "no-store" });
+    const endpoint = force ? "/api/jobs?refresh=1" : "/api/jobs";
+    const response = await fetch(endpoint, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -609,7 +609,6 @@ async function refresh() {
     renderClusters(payload);
     lastGeneratedEpoch = payload.generated_at_epoch;
     renderUpdateAge();
-    scheduleRefresh(payload.refresh_seconds);
   } catch (error) {
     lastUpdatedNode.textContent = `Refresh failed: ${error.message}`;
   } finally {
@@ -631,13 +630,6 @@ function renderUpdateAge() {
   lastUpdatedNode.textContent = `Updated ${ageLabel}`;
 }
 
-function scheduleRefresh(seconds) {
-  if (refreshHandle) {
-    clearTimeout(refreshHandle);
-  }
-  refreshHandle = setTimeout(refresh, seconds * 1000);
-}
-
-refreshButton.addEventListener("click", refresh);
+refreshButton.addEventListener("click", () => refresh(true));
 setInterval(renderUpdateAge, 10000);
-refresh();
+refresh(false);
