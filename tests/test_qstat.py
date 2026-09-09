@@ -5,7 +5,13 @@ import unittest
 from unittest.mock import patch
 
 from cluster_observer.config import ClusterConfig
-from cluster_observer.qstat import _parse_qstat_output, collect_cluster_jobs
+from cluster_observer.models import JobRecord
+from cluster_observer.qstat import (
+    _build_quota_groups,
+    _parse_project_quotas,
+    _parse_qstat_output,
+    collect_cluster_jobs,
+)
 
 
 QSTAT_OUTPUT = """
@@ -41,6 +47,69 @@ Job Id: 201.gaas
 
 
 class QstatTests(unittest.TestCase):
+    def test_parse_project_quotas_scopes_cpu_and_gpu_limits(self) -> None:
+        output = """
+        max_run_res.ngpus = [p:gs_cceb_r.ni=2]
+        max_run_res.ncpus = [p:gs_cceb_r.ni=24]
+        max_run_res.ngpus = [p:other-project=8]
+        """
+
+        self.assertEqual(
+            _parse_project_quotas(output, {"gs_cceb_r.ni"}),
+            {"gs_cceb_r.ni": {"gpu": 2, "cpu": 24}},
+        )
+
+    def test_manual_quota_group_replaces_covered_pbs_project_quota(self) -> None:
+        cluster = ClusterConfig(
+            name="gaas",
+            host="gaas.example",
+            user="alice",
+            filter_groups={"project": {"project": ("proj-a", "proj-b")}},
+            quota_groups=(
+                {
+                    "name": "shared",
+                    "label": "shared queue",
+                    "projects": ("proj-a",),
+                    "gpu": 8,
+                },
+            ),
+        )
+
+        groups = _build_quota_groups(
+            cluster,
+            [],
+            {"proj-a": {"gpu": 1}, "proj-b": {"gpu": 2}},
+        )
+
+        self.assertEqual([group["name"] for group in groups], ["shared", "pbs:proj-b"])
+
+    def test_shared_quota_splits_configured_projects_from_external_usage(self) -> None:
+        cluster = ClusterConfig(
+            name="gaas",
+            host="gaas.example",
+            user="alice",
+            filter_groups={"project": {"project": ("proj-a",)}},
+            quota_groups=(
+                {
+                    "name": "shared",
+                    "queue": "gpu_as",
+                    "covers_projects": ("proj-a",),
+                    "gpu": 8,
+                },
+            ),
+        )
+        jobs = [
+            JobRecord("gaas", "1", "alice", "R", "proj-a", "", "gpu_as", "2", "", "", ""),
+            JobRecord("gaas", "2", "bob", "R", "external", "", "gpu_as", "3", "", "", ""),
+        ]
+
+        groups = _build_quota_groups(cluster, jobs, {"proj-a": {"gpu": 1}})
+
+        self.assertEqual(groups[0]["used_gpu"], 5)
+        self.assertEqual(groups[0]["own_used_gpu"], 2)
+        self.assertEqual(groups[0]["own_projects"], ["proj-a"])
+        self.assertEqual([group["name"] for group in groups], ["shared"])
+
     def test_parse_qstat_output_keeps_project_and_drops_batched_parent_rows(self) -> None:
         cluster = ClusterConfig(
             name="gaas",

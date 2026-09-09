@@ -33,6 +33,7 @@ The browser UI is built around one cluster-wide job table plus live filters:
 - summary cards and top-user / top-queue breakdowns
 - client-side search, sorting, and pagination for large job sets
 - a remembered user filter for each browser, applied automatically on later visits
+- project CPU/GPU quota bars when PBS exposes project `max_run_res` limits
 
 Scheduler collection is independent of browser traffic. The service lazily
 collects on the first dashboard request, then serves the shared snapshot to
@@ -108,6 +109,17 @@ Configuration notes:
   the site after that period refreshes it; the Reload button always forces a
   refresh. The legacy `refresh_seconds` setting no longer schedules browser
   polling.
+- Project quota bars come from `qstat -Bf` for projects named in configured
+  filter groups. Usage is the currently running allocation; missing PBS limits
+  are shown explicitly rather than inferred.
+- Manual shared quotas can be added with `[clusters.quota_groups.<name>]`.
+  Groups may constrain usage by `queue`, `project`/`projects`, and set
+  `cpu`/`gpu` limits. Use `covers_projects` when a shared queue quota should
+  hide duplicate PBS project bars without restricting usage aggregation to that
+  known project list. For configured groups, projects already present in the
+  cluster's project filter groups are shown as own usage; other jobs are shown
+  as external usage. They are marked as `configured` and use a separate visual
+  treatment.
 - SSH keys must already be configured. The app does not manage passwords or interactive prompts.
 - The optional top-level `[user_aliases]` table maps scheduler usernames to
   friendlier display names. Filtering still uses the real scheduler username;

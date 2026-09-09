@@ -433,6 +433,68 @@ function renderBreakdowns(summary, viewState) {
   `;
 }
 
+function quotaBar(label, used, limit, ownUsed = 0) {
+  const percent = Math.min(100, limit > 0 ? (used / limit) * 100 : 0);
+  const own = Math.min(used, Math.max(0, ownUsed));
+  const external = Math.max(0, used - own);
+  const ownPercent = Math.min(100, limit > 0 ? (own / limit) * 100 : 0);
+  const externalPercent = Math.max(0, percent - ownPercent);
+  const over = limit > 0 && used > limit;
+  return `
+    <div class="quota-row">
+      <div class="quota-label"><span>${escapeHtml(label)}</span><strong>${used} / ${limit}${own ? ` · own ${own} · external ${external}` : ""}</strong></div>
+      <div class="quota-track" role="progressbar" aria-label="${escapeHtml(label)} quota" aria-valuenow="${used}" aria-valuemin="0" aria-valuemax="${limit}">
+        <span class="quota-fill external${over ? " over" : ""}" style="width: ${externalPercent}%"></span><span class="quota-fill own${over ? " over" : ""}" style="width: ${ownPercent}%"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderProjectQuotas(cluster) {
+  const configuredGroups = cluster.quota_groups || [];
+  const legacyGroups = Object.entries(cluster.project_quotas || {}).map(([project, limits]) => ({
+    name: `pbs:${project}`,
+    label: project,
+    source: "pbs",
+    color: "pbs",
+    cpu: limits.cpu,
+    gpu: limits.gpu,
+    used_cpu: 0,
+    used_gpu: 0,
+  }));
+  const groups = configuredGroups.length ? configuredGroups : legacyGroups;
+  if (!groups.length) {
+    return "";
+  }
+  return `
+    <section class="quota-card" aria-label="Project resource quotas">
+      <div class="quota-head">
+        <h3>Project quotas</h3>
+        <span>currently running · own / external</span>
+      </div>
+      <div class="quota-grid">
+        ${[...groups].sort((left, right) => String(left.label).localeCompare(String(right.label))).map(group => {
+          const sourceClass = group.color === "manual" || group.source === "configured" ? " manual" : " pbs";
+          const bars = [];
+          if (group.cpu !== null && group.cpu !== undefined) {
+            bars.push(quotaBar("CPU", group.used_cpu || 0, group.cpu, group.own_used_cpu || 0));
+          }
+          if (group.gpu !== null && group.gpu !== undefined) {
+            bars.push(quotaBar("GPU", group.used_gpu || 0, group.gpu, group.own_used_gpu || 0));
+          }
+          return `
+            <article class="quota-project${sourceClass}">
+              <div class="quota-project-name"><span>${escapeHtml(group.label || group.name)}</span><small>${escapeHtml(group.source || "configured")}</small></div>
+              ${bars.join("")}
+              ${group.cpu === null || group.cpu === undefined ? `<span class="quota-unlimited">CPU: ${group.used_cpu || 0} active · no limit reported</span>` : ""}
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderClusterCard(cluster, viewState) {
   const statusClass = cluster.stale ? "status-pill stale" : (cluster.ok ? "status-pill" : "status-pill error");
   if (!cluster.ok && !cluster.stale) {
@@ -479,6 +541,7 @@ function renderClusterCard(cluster, viewState) {
         <span><strong>${summary.running_cpu_total || 0} CPU / ${summary.running_gpu_total || 0} GPU</strong> active</span>
       </section>
 
+      ${renderProjectQuotas(cluster)}
       ${renderControls(cluster, viewState)}
       ${renderBreakdowns(summary, viewState)}
       ${renderJobTable(filtered, viewState)}

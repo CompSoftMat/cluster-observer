@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+import re
 import shlex
 import subprocess
 import time
@@ -151,11 +152,150 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
     return _drop_batched_parent_rows(jobs)
 
 
-def _ssh_command(cluster: ClusterConfig) -> list[str]:
+def _ssh_command(cluster: ClusterConfig, qstat_args: tuple[str, ...] | None = None) -> list[str]:
     destination = f"{cluster.user}@{cluster.host}"
-    command_parts = [cluster.qstat_path, *cluster.qstat_args]
+    command_parts = [cluster.qstat_path, *(qstat_args if qstat_args is not None else cluster.qstat_args)]
     remote_command = " ".join(shlex.quote(part) for part in command_parts)
     return ["ssh", *cluster.ssh_options, destination, remote_command]
+
+
+def _configured_projects(cluster: ClusterConfig) -> set[str]:
+    return {
+        project
+        for filters in cluster.filter_groups.values()
+        for project in filters.get("project", ())
+    }
+
+
+def _parse_project_quotas(output: str, projects: set[str]) -> dict[str, dict[str, int]]:
+    quotas: dict[str, dict[str, int]] = {}
+    pattern = re.compile(
+        r"max_run_res\.(?P<resource>ncpus|ngpus|cpu|gpu)\s*=\s*\[(?P<values>[^\]]*)\]"
+    )
+    entry_pattern = re.compile(r"p:(?P<project>[^=,\s]+)=(?P<limit>\d+)")
+    for match in pattern.finditer(output):
+        resource = "cpu" if match.group("resource") in {"cpu", "ncpus"} else "gpu"
+        for entry in entry_pattern.finditer(match.group("values")):
+            project = entry.group("project")
+            if project not in projects:
+                continue
+            quotas.setdefault(project, {})[resource] = int(entry.group("limit"))
+    return quotas
+
+
+def _collect_project_quotas(cluster: ClusterConfig, timeout_seconds: int) -> dict[str, dict[str, int]]:
+    projects = _configured_projects(cluster)
+    if not projects:
+        return {}
+    try:
+        proc = subprocess.run(
+            _ssh_command(cluster, ("-Bf",)),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+        quotas = _parse_project_quotas(proc.stdout, projects)
+        LOGGER.info("project quotas collected cluster=%s projects=%d", cluster.name, len(quotas))
+        return quotas
+    except (OSError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+        LOGGER.warning("project quota collection failed cluster=%s error=%s", cluster.name, exc)
+        return {}
+
+
+def _quota_group_matches(group: dict[str, object], job: JobRecord) -> bool:
+    projects = group.get("projects", ())
+    if group.get("project"):
+        projects = (*projects, group["project"])
+    queues = group.get("queues", ())
+    if group.get("queue"):
+        queues = (*queues, group["queue"])
+    if projects and job.project not in projects:
+        return False
+    if queues and job.queue not in queues:
+        return False
+    return True
+
+
+def _build_quota_group(
+    group: dict[str, object],
+    jobs: list[JobRecord],
+    own_projects: set[str] | None = None,
+) -> dict:
+    own_projects = own_projects or set(group.get("own_projects", ()))
+    used_cpu = 0
+    used_gpu = 0
+    own_used_cpu = 0
+    own_used_gpu = 0
+    for job in jobs:
+        if (job.state or "").upper() != "R" or not _quota_group_matches(group, job):
+            continue
+        cpu = 0
+        try:
+            cpu = int(job.cpu or "0")
+        except ValueError:
+            pass
+        used_cpu += cpu
+        gpu = 0
+        try:
+            gpu = int(job.gpu or "0")
+        except ValueError:
+            pass
+        used_gpu += gpu
+        if job.project in own_projects:
+            own_used_cpu += cpu
+            own_used_gpu += gpu
+    return {
+        "name": str(group["name"]),
+        "label": str(group.get("label", group["name"])),
+        "source": str(group.get("source", "configured")),
+        "color": str(group.get("color", "manual")),
+        "cpu": group.get("cpu"),
+        "gpu": group.get("gpu"),
+        "used_cpu": used_cpu,
+        "used_gpu": used_gpu,
+        "own_projects": sorted(own_projects),
+        "own_used_cpu": own_used_cpu,
+        "own_used_gpu": own_used_gpu,
+    }
+
+
+def _build_quota_groups(
+    cluster: ClusterConfig,
+    jobs: list[JobRecord],
+    project_quotas: dict[str, dict[str, int]],
+) -> list[dict]:
+    configured_projects = _configured_projects(cluster)
+    groups = [
+        _build_quota_group(group, jobs, configured_projects)
+        for group in cluster.quota_groups
+    ]
+    covered_projects = {
+        project
+        for group in cluster.quota_groups
+        for project in (
+            (*group.get("covers_projects", ()), *group.get("projects", ()), group["project"])
+            if group.get("project")
+            else (*group.get("covers_projects", ()), *group.get("projects", ()))
+        )
+    }
+    for project, limits in sorted(project_quotas.items()):
+        if project in covered_projects:
+            continue
+        groups.append(
+            _build_quota_group(
+                {
+                    "name": f"pbs:{project}",
+                    "label": project,
+                    "source": "pbs",
+                    "color": "pbs",
+                    "project": project,
+                    **limits,
+                },
+                jobs,
+            )
+        )
+    return groups
 
 
 def collect_cluster_jobs(
@@ -176,6 +316,8 @@ def collect_cluster_jobs(
         )
         parsed_jobs = _parse_qstat_output(proc.stdout, cluster)
         job_groups, jobs = build_job_groups(cluster, parsed_jobs)
+        project_quotas = _collect_project_quotas(cluster, timeout_seconds)
+        quota_groups = _build_quota_groups(cluster, parsed_jobs, project_quotas)
         result = {
             "cluster": cluster.name,
             "host": masked_host,
@@ -183,6 +325,8 @@ def collect_cluster_jobs(
             "jobs": [job.to_dict(user_aliases) for job in jobs],
             "job_groups": [group.to_dict(user_aliases) for group in job_groups],
             "summary": summarize_jobs(jobs, cluster, user_aliases),
+            "project_quotas": project_quotas,
+            "quota_groups": quota_groups,
             "job_count": len(jobs),
             "duration_seconds": round(time.time() - started, 2),
         }

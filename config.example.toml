@@ -29,5 +29,13 @@ user = "your-username"
 ssh_options = ["-o", "BatchMode=yes"]
 qstat_args = ["-t", "-f"]
 
+[clusters.quota_groups.gpu_shared]
+label = "gpu queue shared"
+queue = "gpu_as"
+covers_projects = ["project-a", "project-b"]
+gpu = 8
+source = "configured"
+color = "manual"
+
 [clusters.filter_groups.project]
 project = ["your-project-code"]

@@ -95,10 +95,14 @@ def summarize_jobs(
         )
     running_gpu_by_user = Counter()
     running_cpu_total = 0
+    project_resource_usage: dict[str, dict[str, int]] = {}
     for job in jobs:
         if (job.state or "").upper() == "R":
             running_gpu_by_user[job.user or "-"] += _gpu_count(job)
             running_cpu_total += _cpu_count(job)
+            usage = project_resource_usage.setdefault(job.project or "-", {"cpu": 0, "gpu": 0})
+            usage["cpu"] += _cpu_count(job)
+            usage["gpu"] += _gpu_count(job)
     return {
         "total_jobs": len(jobs),
         "running_jobs": state_counts.get("R", 0),
@@ -122,5 +126,9 @@ def summarize_jobs(
                 running_gpu_by_user.items(),
                 key=lambda item: (-item[1], item[0]),
             )
+        ],
+        "project_resource_usage": [
+            {"project": project, **resources}
+            for project, resources in sorted(project_resource_usage.items())
         ],
     }

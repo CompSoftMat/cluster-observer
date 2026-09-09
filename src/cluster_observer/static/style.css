@@ -283,6 +283,127 @@ button:disabled {
   font-size: 1rem;
 }
 
+.quota-card {
+  padding: 12px;
+  border-radius: 10px;
+  background: #1d1d26;
+  border: 1px solid var(--border);
+}
+
+.quota-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.quota-head h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.quota-head span,
+.quota-unlimited {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.quota-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px 22px;
+}
+
+.quota-project {
+  min-width: 0;
+}
+
+.quota-project-name {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.quota-project-name small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.quota-project.manual {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(230, 195, 132, 0.06);
+  border: 1px solid rgba(230, 195, 132, 0.18);
+}
+
+.quota-project.manual .quota-fill {
+  background: #777b91;
+}
+
+.quota-project.manual .quota-fill.own {
+  background: var(--warn);
+}
+
+.quota-project.manual .quota-fill.over {
+  background: var(--danger);
+}
+
+.quota-row + .quota-row {
+  margin-top: 8px;
+}
+
+.quota-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.quota-label strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.quota-track {
+  display: flex;
+  height: 7px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #303040;
+}
+
+.quota-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.quota-fill.external {
+  background: #777b91;
+}
+
+.quota-fill.own {
+  background: var(--accent);
+}
+
+.quota-fill.over {
+  background: var(--danger);
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

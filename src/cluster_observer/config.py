@@ -18,6 +18,7 @@ class ClusterConfig:
     ssh_options: tuple[str, ...] = ()
     qstat_path: str = "qstat"
     qstat_args: tuple[str, ...] = ("-f",)
+    quota_groups: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,23 @@ def _cluster_from_dict(raw: dict) -> ClusterConfig:
     ssh_options = tuple(str(item) for item in raw.get("ssh_options", []))
     qstat_path = str(raw.get("qstat_path", "qstat"))
     qstat_args = tuple(str(item) for item in raw.get("qstat_args", ["-f"]))
+    quota_groups_raw = raw.get("quota_groups", {})
+    quota_groups: list[dict[str, object]] = []
+    if isinstance(quota_groups_raw, dict):
+        for group_name, group_raw in quota_groups_raw.items():
+            if not isinstance(group_raw, dict):
+                continue
+            group: dict[str, object] = {"name": str(group_name)}
+            for key in ("label", "source", "color", "queue", "project"):
+                if key in group_raw:
+                    group[key] = str(group_raw[key])
+            for key in ("queues", "projects", "covers_projects"):
+                if isinstance(group_raw.get(key), list):
+                    group[key] = tuple(str(item) for item in group_raw[key] if str(item))
+            for key in ("cpu", "gpu"):
+                if key in group_raw and group_raw[key] is not None:
+                    group[key] = int(group_raw[key])
+            quota_groups.append(group)
     if not user:
         raise ValueError(f"cluster {name!r} is missing user")
     filter_groups: dict[str, dict[str, tuple[str, ...]]] = {}
@@ -99,6 +117,7 @@ def _cluster_from_dict(raw: dict) -> ClusterConfig:
         ssh_options=ssh_options,
         qstat_path=qstat_path,
         qstat_args=qstat_args,
+        quota_groups=tuple(quota_groups),
     )
 
 
