@@ -104,6 +104,8 @@ Configuration notes:
 - If no `filter_groups`, legacy `filters`, or `project` are configured, the cluster defaults to an `all jobs` preset.
 - Legacy `filters = ...` and `project = "..."` are still accepted and are mapped into a default group for backward compatibility.
 - `user` defaults to the local `$USER` if omitted.
+- `qstat_path` defaults to `qstat`; set it to an absolute path when the command
+  is not on the non-interactive SSH shell's `PATH`.
 - `qstat_args` defaults to `["-f"]`. For clusters where you want PBS arrays or batched jobs expanded into member jobs, try `["-t", "-f"]`.
 - Collection is demand-driven: cached data is reused for 15 minutes. Opening
   the site after that period refreshes it; the Reload button always forces a
