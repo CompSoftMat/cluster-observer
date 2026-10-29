@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 import logging
 import re
 import shlex
@@ -86,6 +87,20 @@ def _drop_batched_parent_rows(jobs: list[JobRecord]) -> list[JobRecord]:
     ]
 
 
+def _inherit_batched_parent_projects(jobs: list[JobRecord]) -> list[JobRecord]:
+    parent_projects = {
+        _job_id_base(job.job_id): job.project
+        for job in jobs
+        if "[" not in job.job_id and job.project
+    }
+    return [
+        replace(job, project=parent_projects[_job_id_base(job.job_id)])
+        if "[" in job.job_id and not job.project and _job_id_base(job.job_id) in parent_projects
+        else job
+        for job in jobs
+    ]
+
+
 def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
     jobs: list[JobRecord] = []
     current: dict[str, str] = {}
@@ -149,7 +164,7 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
             current["project"] = value
 
     flush()
-    return _drop_batched_parent_rows(jobs)
+    return _drop_batched_parent_rows(_inherit_batched_parent_projects(jobs))
 
 
 def _ssh_command(cluster: ClusterConfig, qstat_args: tuple[str, ...] | None = None) -> list[str]:
