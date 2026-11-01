@@ -18,6 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 def _parse_select_resources(value: str) -> dict[str, str]:
     totals = {"cpu": 0, "gpu": 0}
+    seen = set()
     for chunk in value.split("+"):
         parts = chunk.split(":")
         multiplier = int(parts[0]) if parts and parts[0].isdigit() else 1
@@ -26,10 +27,12 @@ def _parse_select_resources(value: str) -> dict[str, str]:
             if not separator or not raw_count.isdigit():
                 continue
             if key == "ncpus":
+                seen.add("cpu")
                 totals["cpu"] += multiplier * int(raw_count)
             elif key == "ngpus":
+                seen.add("gpu")
                 totals["gpu"] += multiplier * int(raw_count)
-    return {key: str(count) for key, count in totals.items() if count}
+    return {key: str(totals[key]) for key in seen}
 
 
 def _format_select_resources(value: str) -> str:
@@ -76,14 +79,18 @@ def _drop_batched_parent_rows(jobs: list[JobRecord]) -> list[JobRecord]:
     child_bases = {
         _job_id_base(job.job_id)
         for job in jobs
-        if "[" in job.job_id and "]" in job.job_id
+        if re.search(r"\[\d+\]", job.job_id)
     }
     if not child_bases:
         return jobs
     return [
         job
         for job in jobs
-        if not (job.state == "B" and _job_id_base(job.job_id) in child_bases)
+        if not (
+            (job.state == "B" or "[]" in job.job_id)
+            and not re.search(r"\[\d+\]", job.job_id)
+            and _job_id_base(job.job_id) in child_bases
+        )
     ]
 
 
@@ -91,7 +98,7 @@ def _inherit_batched_parent_projects(jobs: list[JobRecord]) -> list[JobRecord]:
     parent_projects = {
         _job_id_base(job.job_id): job.project
         for job in jobs
-        if "[" not in job.job_id and job.project
+        if ("[" not in job.job_id or "[]" in job.job_id) and job.project
     }
     return [
         replace(job, project=parent_projects[_job_id_base(job.job_id)])
@@ -124,11 +131,22 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
                 requested_walltime=current.get("requested_walltime", ""),
                 scheduled_start_time=current.get("scheduled_start_time", ""),
                 resource_shape=current.get("resource_shape", ""),
+                exit_status=int(current["Exit_status"]) if re.fullmatch(r"-?\d+", current.get("Exit_status", "")) else None,
+                depend=current.get("depend", ""),
+                hold_types=current.get("Hold_Types", ""),
+                comment=current.get("comment", ""),
             )
         )
         current.clear()
 
-    for raw_line in output.splitlines():
+    # PBS wraps long attributes; unfold before parsing dependencies and comments.
+    unfolded: list[str] = []
+    for line in output.splitlines():
+        if line.startswith("\t") and unfolded:
+            unfolded[-1] += line.strip()
+        else:
+            unfolded.append(line)
+    for raw_line in unfolded:
         if not raw_line.strip():
             continue
         if raw_line.startswith("Job Id:"):
@@ -162,6 +180,8 @@ def _parse_qstat_output(output: str, cluster: ClusterConfig) -> list[JobRecord]:
             current["scheduled_start_time"] = value
         elif key == "project":
             current["project"] = value
+        elif key in {"Exit_status", "depend", "Hold_Types", "comment"}:
+            current[key] = value
 
     flush()
     return _drop_batched_parent_rows(_inherit_batched_parent_projects(jobs))
@@ -242,9 +262,16 @@ def _build_quota_group(
     used_gpu = 0
     own_used_cpu = 0
     own_used_gpu = 0
+    unknown_resources: set[str] = set()
+    own_unknown_resources: set[str] = set()
     for job in jobs:
         if (job.state or "").upper() != "R" or not _quota_group_matches(group, job):
             continue
+        for resource in ("cpu", "gpu"):
+            if not getattr(job, resource).isdigit():
+                unknown_resources.add(resource)
+                if job.project in own_projects:
+                    own_unknown_resources.add(resource)
         cpu = 0
         try:
             cpu = int(job.cpu or "0")
@@ -267,11 +294,11 @@ def _build_quota_group(
         "color": str(group.get("color", "manual")),
         "cpu": group.get("cpu"),
         "gpu": group.get("gpu"),
-        "used_cpu": used_cpu,
-        "used_gpu": used_gpu,
+        "used_cpu": None if "cpu" in unknown_resources else used_cpu,
+        "used_gpu": None if "gpu" in unknown_resources else used_gpu,
         "own_projects": sorted(own_projects),
-        "own_used_cpu": own_used_cpu,
-        "own_used_gpu": own_used_gpu,
+        "own_used_cpu": None if "cpu" in own_unknown_resources else own_used_cpu,
+        "own_used_gpu": None if "gpu" in own_unknown_resources else own_used_gpu,
     }
 
 

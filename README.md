@@ -130,6 +130,17 @@ Configuration notes:
 
 ## Install
 
+Job results preserve the raw PBS state separately from the displayed outcome.
+Finished jobs (`X`, `F`, or `C`) use `Exit_status`: zero means completed
+successfully, a nonzero value means failed (or cancelled when PBS explicitly
+identifies cancellation), and a missing status means the outcome is unknown.
+Dependency holds show predecessor IDs. Array summaries count the observed
+subjobs separately by outcome and live state; they do not imply all array
+members are present in the snapshot. A successful job/segment does not establish
+completion of a whole campaign chain: that requires campaign metadata.
+Missing CPU/GPU fields and incomplete resource totals are displayed as unknown,
+while an explicitly reported zero remains zero.
+
 ```bash
 python3 -m pip install -e .
 ```

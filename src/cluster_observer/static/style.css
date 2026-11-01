@@ -880,3 +880,9 @@ tbody tr:hover {
     font-weight: 600;
   }
 }
+.job-state.successful { color: var(--green); }
+.job-state.failed { color: var(--danger); }
+.job-state.cancelled, .job-state.unknown { color: var(--warn); }
+.array-summary { padding: 12px; border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
+.array-summary p { margin: 0 0 8px; color: var(--muted); }
+.col-state .job-state { white-space: normal; }

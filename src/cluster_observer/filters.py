@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 
 from cluster_observer.config import ClusterConfig
 from cluster_observer.models import JobGroup, JobRecord
@@ -103,6 +104,24 @@ def summarize_jobs(
             usage = project_resource_usage.setdefault(job.project or "-", {"cpu": 0, "gpu": 0})
             usage["cpu"] += _cpu_count(job)
             usage["gpu"] += _gpu_count(job)
+    running = [job for job in jobs if job.state.upper() == "R"]
+    unknown_cpu = sum(not job.cpu.isdigit() for job in running)
+    unknown_gpu = sum(not job.gpu.isdigit() for job in running)
+    for project, usage in project_resource_usage.items():
+        members = [job for job in running if (job.project or "-") == project]
+        for resource in ("cpu", "gpu"):
+            if any(not getattr(job, resource).isdigit() for job in members):
+                usage[resource] = None
+    arrays: dict[str, dict[str, int]] = {}
+    for job in jobs:
+        if not re.search(r"\[\d+\]", job.job_id):
+            continue
+        array_id = re.sub(r"\[\d+\]", "[]", job.job_id)
+        counts = arrays.setdefault(array_id, dict.fromkeys(
+            ("successful", "failed", "unknown", "running", "queued", "held", "cancelled", "other"), 0
+        ))
+        category = job.outcome or {"R": "running", "Q": "queued", "H": "held"}.get(job.state.upper(), "other")
+        counts[category] += 1
     return {
         "total_jobs": len(jobs),
         "running_jobs": state_counts.get("R", 0),
@@ -114,14 +133,19 @@ def summarize_jobs(
         "users_count": len(user_counts),
         "queues_count": len(queue_counts),
         "projects_count": len(project_counts),
-        "running_cpu_total": running_cpu_total,
-        "running_gpu_total": sum(running_gpu_by_user.values()),
+        "running_cpu_total": None if unknown_cpu else running_cpu_total,
+        "running_gpu_total": None if unknown_gpu else sum(running_gpu_by_user.values()),
+        "running_cpu_known_total": running_cpu_total,
+        "running_gpu_known_total": sum(running_gpu_by_user.values()),
+        "running_cpu_unknown_jobs": unknown_cpu,
+        "running_gpu_unknown_jobs": unknown_gpu,
+        "array_counts": [dict(array_id=array_id, **counts) for array_id, counts in sorted(arrays.items())],
         "state_counts": _sorted_counts(state_counts),
         "user_counts": _sorted_user_counts(user_counts, user_aliases),
         "queue_counts": _sorted_counts(queue_counts),
         "project_counts": _sorted_counts(project_counts),
         "running_gpu_by_user": [
-            {"value": value, "count": count}
+            {"value": value, "count": None if any(job.user == value and not job.gpu.isdigit() for job in running) else count}
             for value, count in sorted(
                 running_gpu_by_user.items(),
                 key=lambda item: (-item[1], item[0]),

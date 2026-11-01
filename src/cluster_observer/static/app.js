@@ -258,17 +258,18 @@ function userLabel(job) {
 }
 
 function resourceLabel(job) {
-  if (job.resource_shape) {
-    return job.resource_shape.replaceAll("x (", "× (");
-  }
-  const resources = [];
-  if (numericValue(job.cpu) > 0) {
-    resources.push(`${job.cpu} CPU`);
-  }
-  if (numericValue(job.gpu) > 0) {
-    resources.push(`${job.gpu} GPU`);
-  }
-  return resources.join(" / ") || "-";
+  const resources = `${job.cpu === "" || job.cpu == null ? "unknown" : job.cpu} CPU / ${job.gpu === "" || job.gpu == null ? "unknown" : job.gpu} GPU`;
+  return job.resource_shape ? `${resources} · ${job.resource_shape.replaceAll("x (", "× (")}` : resources;
+}
+
+function statusMarkup(job) {
+  const dependencies = job.dependency_job_ids || [];
+  const detail = job.state === "H" && dependencies.length
+    ? `Predecessor: ${dependencies.join(", ")}`
+    : job.outcome ? `Job/segment result · chain progress unknown` : "";
+  return `<span class="${stateClass(job.state)} ${escapeHtml(job.outcome || "")}">${escapeHtml(job.status_label || job.state || "Unknown")}</span>
+    <span class="row-secondary">PBS: ${escapeHtml(job.raw_state || job.state || "unknown")}${job.exit_status != null ? ` · Exit status: ${escapeHtml(job.exit_status)}` : ""}</span>
+    ${detail ? `<span class="row-secondary">${escapeHtml(detail)}</span>` : ""}`;
 }
 
 function renderFacetSection(title, key, items, activeValue) {
@@ -299,7 +300,7 @@ function jobRow(job) {
         <span class="row-secondary">${escapeHtml(job.project || "no project")} · ${escapeHtml(job.submitted_at || "submit time unavailable")}</span>
       </td>
       <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
-      <td data-label="State" class="col-state"><span class="${stateClass(job.state)}">${escapeHtml(job.state || "-")}</span></td>
+      <td data-label="State" class="col-state">${statusMarkup(job)}</td>
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
       <td data-label="Resources" class="col-resource">${escapeHtml(resourceLabel(job))}</td>
       <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}</td>
@@ -434,6 +435,9 @@ function renderBreakdowns(summary, viewState) {
 }
 
 function quotaBar(label, used, limit, ownUsed = 0) {
+  if (used == null || ownUsed == null) {
+    return `<div class="quota-row"><div class="quota-label"><span>${escapeHtml(label)}</span><strong>usage unknown / ${limit}</strong></div></div>`;
+  }
   const percent = Math.min(100, limit > 0 ? (used / limit) * 100 : 0);
   const own = Math.min(used, Math.max(0, ownUsed));
   const external = Math.max(0, used - own);
@@ -477,16 +481,16 @@ function renderProjectQuotas(cluster) {
           const sourceClass = group.color === "manual" || group.source === "configured" ? " manual" : " pbs";
           const bars = [];
           if (group.cpu !== null && group.cpu !== undefined) {
-            bars.push(quotaBar("CPU", group.used_cpu || 0, group.cpu, group.own_used_cpu || 0));
+            bars.push(quotaBar("CPU", group.used_cpu, group.cpu, group.own_used_cpu));
           }
           if (group.gpu !== null && group.gpu !== undefined) {
-            bars.push(quotaBar("GPU", group.used_gpu || 0, group.gpu, group.own_used_gpu || 0));
+            bars.push(quotaBar("GPU", group.used_gpu, group.gpu, group.own_used_gpu));
           }
           return `
             <article class="quota-project${sourceClass}">
               <div class="quota-project-name"><span>${escapeHtml(group.label || group.name)}</span><small>${escapeHtml(group.source || "configured")}</small></div>
               ${bars.join("")}
-              ${group.cpu === null || group.cpu === undefined ? `<span class="quota-unlimited">CPU: ${group.used_cpu || 0} active · no limit reported</span>` : ""}
+              ${group.cpu === null || group.cpu === undefined ? `<span class="quota-unlimited">CPU: ${group.used_cpu ?? "unknown"} active · no limit reported</span>` : ""}
             </article>
           `;
         }).join("")}
@@ -538,8 +542,13 @@ function renderClusterCard(cluster, viewState) {
         <span><strong class="running-count">${summary.running_jobs || 0}</strong> running</span>
         <span><strong class="queued-count">${summary.queued_jobs || 0}</strong> queued</span>
         <span><strong class="held-count">${summary.held_jobs || 0}</strong> held</span>
-        <span><strong>${summary.running_cpu_total || 0} CPU / ${summary.running_gpu_total || 0} GPU</strong> active</span>
+        <span><strong>${summary.running_cpu_total ?? "unknown"} CPU / ${summary.running_gpu_total ?? "unknown"} GPU</strong> active</span>
       </section>
+
+      ${(summary.array_counts || []).length ? `<section class="array-summary" aria-label="Array subjob outcomes">
+        <p>Array subjobs · job/segment outcomes. Whole-chain progress requires campaign metadata.</p>
+        ${summary.array_counts.map(array => `<div><code>${escapeHtml(array.array_id)}</code> · ${array.successful} successful / ${array.failed} failed / ${array.unknown} outcome unknown / ${array.running} running / ${array.queued} queued / ${array.held} held${array.cancelled ? ` / ${array.cancelled} cancelled` : ""}${array.other ? ` / ${array.other} other` : ""}</div>`).join("")}
+      </section>` : ""}
 
       ${renderProjectQuotas(cluster)}
       ${renderControls(cluster, viewState)}
