@@ -263,13 +263,41 @@ function resourceLabel(job) {
 }
 
 function statusMarkup(job) {
+  const state = job.raw_state || job.state || "?";
+  const suffix = {successful: "OK", failed: "ERR", cancelled: "CAN", unknown: "?"}[job.outcome];
   const dependencies = job.dependency_job_ids || [];
-  const detail = job.state === "H" && dependencies.length
-    ? `Predecessor: ${dependencies.join(", ")}`
-    : job.outcome ? `Job/segment result · chain progress unknown` : "";
-  return `<span class="${stateClass(job.state)} ${escapeHtml(job.outcome || "")}">${escapeHtml(job.status_label || job.state || "Unknown")}</span>
-    <span class="row-secondary">PBS: ${escapeHtml(job.raw_state || job.state || "unknown")}${job.exit_status != null ? ` · Exit status: ${escapeHtml(job.exit_status)}` : ""}</span>
-    ${detail ? `<span class="row-secondary">${escapeHtml(detail)}</span>` : ""}`;
+  const badge = suffix ? `${state}/${suffix}` : state === "H" && dependencies.length ? "H/DEP" : state;
+  const details = [job.status_label || state, `PBS: ${state}`];
+  if (job.exit_status != null) details.push(`Exit status: ${job.exit_status}`);
+  if (state === "H" && dependencies.length) details.push(`Predecessor: ${dependencies.join(", ")}`);
+  if (job.outcome) details.push("Job/segment result; whole-chain progress requires campaign metadata.");
+  const explanation = escapeHtml(details.join(" · "));
+  return `<span tabindex="0" title="${explanation}" aria-label="${explanation}" class="${stateClass(job.state)} ${escapeHtml(job.outcome || "")}">${escapeHtml(badge)}</span>`;
+}
+
+function stateHelp() {
+  return `<span class="state-help">
+    <button type="button" class="state-help-button" aria-label="State meanings" aria-describedby="state-meanings">?</button>
+    <span id="state-meanings" role="tooltip" class="state-help-tooltip">R — Running
+Q — Queued
+H — Held
+H/DEP — Waiting for dependency; hover the badge for predecessor IDs
+B — Array parent / begun
+E — Exiting
+S — Suspended
+T — In transit
+W — Waiting for scheduled execution
+U — Suspended by scheduler
+M — Moved to another server
+X — Finished/deleted array subjob
+F or C — Finished
+/OK — Completed successfully (exit status 0)
+/ERR — Failed (nonzero exit status)
+/CAN — Explicitly cancelled
+/? — Finished; outcome unknown (exit status missing)
+
+The prefix preserves the PBS state, e.g. X/OK or F/OK. Hover a badge for details. Completion describes a job/segment; whole-chain progress requires campaign metadata.</span>
+  </span>`;
 }
 
 function renderFacetSection(title, key, items, activeValue) {
@@ -396,10 +424,10 @@ function renderControls(cluster, viewState) {
           <span>Queue</span>
           <select data-filter-key="queue">${optionMarkup("queues", summary.queue_counts || [], viewState.queue)}</select>
         </label>
-        <label class="control-field">
-          <span>State</span>
-          <select data-filter-key="state">${optionMarkup("states", summary.state_counts || [], viewState.state)}</select>
-        </label>
+        <div class="control-field">
+          <div class="state-filter-label"><label for="state-filter">State</label>${stateHelp()}</div>
+          <select id="state-filter" data-filter-key="state">${optionMarkup("states", summary.state_counts || [], viewState.state)}</select>
+        </div>
         <label class="control-field">
           <span>Project</span>
           <select data-filter-key="project">${optionMarkup("projects", summary.project_counts || [], viewState.project)}</select>
@@ -544,11 +572,6 @@ function renderClusterCard(cluster, viewState) {
         <span><strong class="held-count">${summary.held_jobs || 0}</strong> held</span>
         <span><strong>${summary.running_cpu_total ?? "unknown"} CPU / ${summary.running_gpu_total ?? "unknown"} GPU</strong> active</span>
       </section>
-
-      ${(summary.array_counts || []).length ? `<section class="array-summary" aria-label="Array subjob outcomes">
-        <p>Array subjobs · job/segment outcomes. Whole-chain progress requires campaign metadata.</p>
-        ${summary.array_counts.map(array => `<div><code>${escapeHtml(array.array_id)}</code> · ${array.successful} successful / ${array.failed} failed / ${array.unknown} outcome unknown / ${array.running} running / ${array.queued} queued / ${array.held} held${array.cancelled ? ` / ${array.cancelled} cancelled` : ""}${array.other ? ` / ${array.other} other` : ""}</div>`).join("")}
-      </section>` : ""}
 
       ${renderProjectQuotas(cluster)}
       ${renderControls(cluster, viewState)}
