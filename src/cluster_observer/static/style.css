@@ -907,3 +907,38 @@ tbody tr:hover {
   border-top: 1px solid var(--border);
   color: var(--muted);
 }
+.job-id-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.job-details {
+  box-sizing: border-box;
+  width: min(540px, 100vw);
+  height: 100%;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.job-details::backdrop { background: #0008; }
+.job-details-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.job-details-header h2 { flex: 1 1 180px; margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.job-details-copy { min-height: 1.4em; color: var(--muted); }
+.job-details-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 8px 14px;
+}
+.job-details-fields dt { color: var(--muted); }
+.job-details-fields dd { margin: 0; overflow-wrap: anywhere; }
+.job-details-fields ul { margin: 0; padding: 0; list-style: none; }

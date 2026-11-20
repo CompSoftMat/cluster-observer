@@ -1,4 +1,5 @@
 import {mountStateFilter} from "./state-filter.js";
+import {openJobDetails} from "./job-details.js";
 
 const summaryNode = document.getElementById("summary");
 const clusterNavNode = document.getElementById("cluster-nav");
@@ -297,7 +298,7 @@ function jobRow(job) {
   return `
     <tr>
       <td data-label="Job" class="col-job">
-        <code>${escapeHtml(job.job_id || "-")}</code>
+        <button class="job-id-button" type="button" data-job-id="${escapeHtml(job.job_id)}"><code>${escapeHtml(job.job_id)}</code></button>
         <span class="row-secondary">${escapeHtml(job.project || "no project")} · ${escapeHtml(job.submitted_at || "submit time unavailable")}</span>
       </td>
       <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
@@ -602,6 +603,12 @@ function renderClusters(payload) {
 
 function attachClusterHandlers(cluster, payload) {
   const viewState = ensureViewState(cluster.cluster);
+  const jobsById = new Map((cluster.jobs || []).map(job => [job.job_id, job]));
+  for (const button of clustersNode.querySelectorAll("[data-job-id]")) {
+    button.addEventListener("click", () => {
+      openJobDetails(jobsById.get(button.dataset.jobId), jobsById, button);
+    });
+  }
   const moreFilters = clustersNode.querySelector(".more-filters");
   moreFilters?.addEventListener("toggle", () => {
     if (moreFilters.isConnected) viewState.showMoreFilters = moreFilters.open;
