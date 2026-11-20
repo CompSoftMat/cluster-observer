@@ -1,24 +1,24 @@
 import {createApp, h, ref} from "./vue.runtime.js";
 
-const stateLegend = `R — Running
-Q — Queued
-H — Held
-H/DEP — Waiting for dependency
-B — Array parent / begun
-E — Exiting
-S — Suspended
-T — In transit
-W — Waiting for scheduled execution
-U — Suspended by scheduler
-M — Moved to another server
-X — Finished/deleted array subjob
-F or C — Finished
-/OK — Completed successfully
-/ERR — Failed
-/CAN — Explicitly cancelled
-/? — Finished; outcome unknown
-
-Hover a badge for exit codes and predecessor IDs. Completion refers to the job or segment. Whole-chain progress requires campaign metadata.`;
+const stateLegend = [
+  ["R", "Running"],
+  ["Q", "Queued"],
+  ["H", "Held"],
+  ["H/DEP", "Waiting for dependency"],
+  ["B", "Array parent / begun"],
+  ["E", "Exiting"],
+  ["S", "Suspended"],
+  ["T", "In transit"],
+  ["W", "Waiting for scheduled execution"],
+  ["U", "Suspended by scheduler"],
+  ["M", "Moved to another server"],
+  ["X", "Finished/deleted array subjob"],
+  ["F or C", "Finished"],
+  ["/OK", "Completed successfully"],
+  ["/ERR", "Failed"],
+  ["/CAN", "Explicitly cancelled"],
+  ["/?", "Finished; outcome unknown"],
+];
 
 const StateFilter = {
   props: ["states", "selected"],
@@ -48,14 +48,20 @@ const StateFilter = {
       return [
         h("div", {class: "state-filter-label"}, [
           h("label", {for: "state-filter"}, "State"),
-          h("span", {class: "state-help", onPointerenter: positionTooltip, onFocusin: positionTooltip}, [
+          h("div", {class: "state-help", onPointerenter: positionTooltip, onFocusin: positionTooltip}, [
             h("button", {
               type: "button",
               class: "state-help-button",
               "aria-label": "State meanings",
               "aria-describedby": "state-meanings",
             }, "?"),
-            h("span", {ref: tooltip, id: "state-meanings", role: "tooltip", class: "state-help-tooltip"}, stateLegend),
+            h("div", {ref: tooltip, id: "state-meanings", role: "tooltip", class: "state-help-tooltip"}, [
+              h("dl", {class: "state-legend"}, stateLegend.flatMap(([code, meaning]) => [
+                h("dt", h("code", code)),
+                h("dd", meaning),
+              ])),
+              h("p", {class: "state-legend-note"}, "Hover a badge for exit codes and predecessor IDs. Completion refers to the job or segment. Whole-chain progress requires campaign metadata."),
+            ]),
           ]),
         ]),
         h("select", {id: "state-filter", value: props.selected, "data-filter-key": "state"}, options),

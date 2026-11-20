@@ -889,3 +889,18 @@ tbody tr:hover {
 .state-help-button { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); background: transparent; font-size: 0.72rem; line-height: 1; cursor: help; }
 .control-field .state-help-tooltip { display: none; position: fixed; z-index: 10; box-sizing: border-box; width: min(330px, 75vw); overflow: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 6px 20px #0008; font-size: 0.78rem; line-height: 1.5; font-weight: 400; letter-spacing: normal; text-transform: none; white-space: pre-line; }
 .state-help:hover .state-help-tooltip, .state-help:focus-within .state-help-tooltip { display: block; }
+.state-legend {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 14px;
+  margin: 0;
+}
+
+.state-legend dt { color: var(--accent); }
+.state-legend dd { margin: 0; }
+.state-legend-note {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+}
