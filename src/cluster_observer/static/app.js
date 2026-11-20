@@ -298,6 +298,7 @@ function jobRow(job) {
     <tr>
       <td data-label="Job" class="col-job">
         <button class="job-id-button" type="button" data-job-id="${escapeHtml(job.job_id)}"><code>${escapeHtml(job.job_id)}</code></button>
+        <button class="job-copy-button" type="button" data-copy-job-id="${escapeHtml(job.job_id)}" title="Copy job ID" aria-label="Copy job ID"><span aria-hidden="true">⧉</span></button>
         ${job.project ? `<span class="row-secondary">${escapeHtml(job.project)}</span>` : ""}
       </td>
       <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
@@ -598,6 +599,46 @@ function renderClusters(payload) {
   attachClusterHandlers(selectedCluster, payload);
 }
 
+async function copyTableJobId(button) {
+  const id = button.dataset.copyJobId;
+  try {
+    await navigator.clipboard.writeText(id);
+  } catch {
+    if (!button.isConnected) return;
+    // The dashboard can be served over plain HTTP, where Clipboard API access is limited.
+    const input = document.createElement("textarea");
+    input.value = id;
+    input.readOnly = true;
+    input.style.cssText = "position: fixed; inset: 0 auto auto 0; opacity: 0";
+    document.body.append(input);
+    input.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      // Select the visible ID so it can still be copied manually.
+    } finally {
+      input.remove();
+      button.focus({preventScroll: true});
+    }
+    if (!copied) {
+      const range = document.createRange();
+      range.selectNodeContents(button.previousElementSibling);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      button.title = "Job ID selected. Use your copy shortcut.";
+      return;
+    }
+  }
+  button.firstElementChild.textContent = "✓";
+  button.title = "Copied";
+  window.setTimeout(() => {
+    button.firstElementChild.textContent = "⧉";
+    button.title = "Copy job ID";
+  }, 1200);
+}
+
 function attachClusterHandlers(cluster, payload) {
   const viewState = ensureViewState(cluster.cluster);
   const jobsById = new Map((cluster.jobs || []).map(job => [job.job_id, job]));
@@ -605,6 +646,9 @@ function attachClusterHandlers(cluster, payload) {
     button.addEventListener("click", () => {
       openJobDetails(jobsById.get(button.dataset.jobId), jobsById, button);
     });
+  }
+  for (const button of clustersNode.querySelectorAll("[data-copy-job-id]")) {
+    button.addEventListener("click", () => copyTableJobId(button));
   }
   const moreFilters = clustersNode.querySelector(".more-filters");
   moreFilters?.addEventListener("toggle", () => {
