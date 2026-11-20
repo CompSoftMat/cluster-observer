@@ -257,8 +257,7 @@ function userLabel(job) {
 }
 
 function resourceLabel(job) {
-  const resources = `${job.cpu === "" || job.cpu == null ? "unknown" : job.cpu} CPU / ${job.gpu === "" || job.gpu == null ? "unknown" : job.gpu} GPU`;
-  return job.resource_shape ? `${resources} · ${job.resource_shape.replaceAll("x (", "× (")}` : resources;
+  return `${job.cpu === "" || job.cpu == null ? "unknown" : job.cpu} CPU / ${job.gpu === "" || job.gpu == null ? "unknown" : job.gpu} GPU`;
 }
 
 function statusMarkup(job) {
@@ -299,14 +298,13 @@ function jobRow(job) {
     <tr>
       <td data-label="Job" class="col-job">
         <button class="job-id-button" type="button" data-job-id="${escapeHtml(job.job_id)}"><code>${escapeHtml(job.job_id)}</code></button>
-        <span class="row-secondary">${escapeHtml(job.project || "no project")} · ${escapeHtml(job.submitted_at || "submit time unavailable")}</span>
+        ${job.project ? `<span class="row-secondary">${escapeHtml(job.project)}</span>` : ""}
       </td>
       <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
       <td data-label="State" class="col-state">${statusMarkup(job)}</td>
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
       <td data-label="Resources" class="col-resource">${escapeHtml(resourceLabel(job))}</td>
       <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}</td>
-      <td data-label="Scheduled" class="col-time">${escapeHtml(job.scheduled_start_time || "-")}</td>
     </tr>
   `;
 }
@@ -354,13 +352,12 @@ function renderJobTable(jobs, viewState) {
         <table>
           <thead>
             <tr>
-              ${sortableHeader("Job · submitted", "submitted_at", viewState)}
+              ${sortableHeader("Job", "submitted_at", viewState)}
               ${sortableHeader("User", "user", viewState)}
               ${sortableHeader("State", "state", viewState)}
               ${sortableHeader("Queue", "queue", viewState)}
               ${sortableHeader("CPU / GPU", "resources", viewState)}
               ${sortableHeader("Walltime", "used_walltime", viewState)}
-              ${sortableHeader("Scheduled", "scheduled_start_time", viewState)}
             </tr>
           </thead>
           <tbody>${pageJobs.map(jobRow).join("")}</tbody>

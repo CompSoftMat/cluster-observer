@@ -34,11 +34,14 @@ export function openJobDetails(initialJob, jobsById, trigger) {
   const app = createApp({
     setup: () => () => {
       const current = job.value;
+      const resources = `${resourceCount(current.cpu)} CPU / ${resourceCount(current.gpu)} GPU`;
+      const layout = current.resource_shape?.replaceAll("x (", "× (");
       const fields = [
         ["User", current.user_alias ? `${current.user_alias} (${current.user})` : current.user],
         ["Project", current.project],
         ["Queue", current.queue],
-        ["Resources", `${resourceCount(current.cpu)} CPU / ${resourceCount(current.gpu)} GPU`],
+        ["Resources", resources],
+        ...(layout && layout !== resources ? [["Resource layout", layout]] : []),
         ["Walltime used", current.used_walltime],
         ["Walltime requested", current.requested_walltime],
         ["Submitted", current.submitted_at],
