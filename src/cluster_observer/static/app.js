@@ -338,7 +338,6 @@ function jobRow(job) {
     <tr>
       <td data-label="Job" class="col-job">
         <button class="job-id-button" type="button" data-job-id="${escapeHtml(job.job_id)}"><code>${escapeHtml(job.job_id)}</code></button>
-        <button class="job-copy-button" type="button" data-copy-job-id="${escapeHtml(job.job_id)}" title="Copy job ID" aria-label="Copy job ID"><span aria-hidden="true">⧉</span></button>
         ${job.project ? `<span class="row-secondary">${escapeHtml(job.project)}</span>` : ""}
       </td>
       <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
@@ -346,6 +345,9 @@ function jobRow(job) {
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
       <td data-label="Resources" class="col-resource">${escapeHtml(resourceLabel(job))}</td>
       <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}</td>
+      <td class="col-copy">
+        <button class="job-copy-button" type="button" data-copy-job-id="${escapeHtml(job.job_id)}" title="Copy job ID" aria-label="Copy job ID"><span aria-hidden="true">⧉</span></button>
+      </td>
     </tr>
   `;
 }
@@ -399,6 +401,7 @@ function renderJobTable(jobs, viewState) {
               ${sortableHeader("Queue", "queue", viewState)}
               ${sortableHeader("CPU / GPU", "resources", viewState)}
               ${sortableHeader("Walltime", "used_walltime", viewState)}
+              <th class="col-copy" scope="col" aria-label="Copy job ID"></th>
             </tr>
           </thead>
           <tbody>${pageJobs.map(jobRow).join("")}</tbody>
@@ -794,7 +797,9 @@ async function copyTableJobId(button) {
     }
     if (!copied) {
       const range = document.createRange();
-      range.selectNodeContents(button.previousElementSibling);
+      const jobId = button.closest("tr")?.querySelector(".job-id-button");
+      if (!jobId) return;
+      range.selectNodeContents(jobId);
       const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);

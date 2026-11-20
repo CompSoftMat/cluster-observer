@@ -941,13 +941,17 @@ tbody tr:hover {
 }
 
 .job-details::backdrop { background: #0008; }
+.col-copy { width: 1%; text-align: right; }
+td.col-copy::before { content: none; }
+@media (max-width: 820px) {
+  td.col-copy { width: auto; }
+}
 .job-copy-button {
   display: inline-grid;
   place-items: center;
   width: 22px;
   height: 22px;
   padding: 0;
-  margin-inline-start: 3px;
   background: transparent;
   color: var(--muted);
   vertical-align: middle;
