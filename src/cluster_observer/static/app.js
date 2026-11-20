@@ -613,19 +613,34 @@ function renderClusterCard(cluster, viewState) {
 
 let unmountStateFilter;
 
+function deleteSavedView(view) {
+  if (!window.confirm(`Delete “${view.name}”?`)) return false;
+  if (savedViews.defaultName === view.name) savedViews.defaultName = "";
+  savedViews.views.splice(savedViews.views.indexOf(view), 1);
+  overviewStates.delete(view);
+  persistSavedViews();
+  return true;
+}
+
 function renderMyViews(payload) {
   clustersNode.innerHTML = `
     <section class="my-views-page">
       <h2>My Views</h2>
       ${savedViews.views.length ? savedViews.views.map((view, index) => `
         <article class="cluster-card my-view-card" data-overview-index="${index}">
-          <header><h3>${escapeHtml(view.name)}</h3><p>${escapeHtml(view.cluster)}</p></header>
+          <header class="my-view-header">
+            <div><h3>${escapeHtml(view.name)}</h3><p>${escapeHtml(view.cluster)}</p></div>
+            <button class="secondary-button" type="button" data-delete-view aria-label="Delete view ${escapeHtml(view.name)}">Delete</button>
+          </header>
           <div data-overview-table></div>
         </article>`).join("") : '<p class="empty">Save a view from a cluster’s Views menu to see it here.</p>'}
     </section>`;
 
   for (const card of clustersNode.querySelectorAll("[data-overview-index]")) {
     const view = savedViews.views[Number(card.dataset.overviewIndex)];
+    card.querySelector("[data-delete-view]").addEventListener("click", () => {
+      if (deleteSavedView(view)) renderClusters(payload);
+    });
     const cluster = payload.clusters.find(item => item.cluster === view.cluster);
     const table = card.querySelector("[data-overview-table]");
     if (!cluster || (!cluster.ok && !cluster.stale)) {
@@ -791,9 +806,11 @@ function attachClusterHandlers(cluster, payload) {
       } else if (action === "default") {
         savedViews.defaultName = savedViews.defaultName === view.name ? "" : view.name;
       } else if (action === "delete") {
-        if (!window.confirm(`Delete “${view.name}”?`)) return;
-        if (savedViews.defaultName === view.name) savedViews.defaultName = "";
-        savedViews.views.splice(index, 1);
+        if (!deleteSavedView(view)) return;
+        renderClusters(payload);
+        const menu = clustersNode.querySelector(".saved-views");
+        if (menu) menu.open = true;
+        return;
       }
       overviewStates.clear();
       persistSavedViews();

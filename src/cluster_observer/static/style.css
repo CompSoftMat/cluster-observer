@@ -985,6 +985,7 @@ tbody tr:hover {
 .my-views-nav[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .my-views-page { display: grid; gap: 14px; min-width: 0; }
 .my-views-page h2, .my-view-card h3 { margin: 0; }
+.my-view-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
 .my-view-card header p { margin: 4px 0 0; color: var(--muted); }
 .saved-view-actions, .saved-view-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .saved-view-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
