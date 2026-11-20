@@ -18,7 +18,7 @@ const OUTCOMES = {
 };
 const STATE_ORDER = { R: 0, Q: 1, H: 2 };
 const SLOW_FETCH_SECONDS = 5;
-const PREFERRED_USER_KEY = "cluster-observer.preferred-user";
+const ME_USER_KEY = "cluster-observer.me.";
 
 let lastGeneratedEpoch = null;
 let activeClusterName = null;
@@ -101,23 +101,24 @@ function ensureViewState(clusterName) {
   return clusterViewState[clusterName];
 }
 
-function loadPreferredUser() {
+function loadMeUser(clusterName) {
   try {
-    return window.localStorage.getItem(PREFERRED_USER_KEY) || "";
+    return window.localStorage.getItem(ME_USER_KEY + clusterName) || "";
   } catch (error) {
     return "";
   }
 }
 
-function savePreferredUser(user) {
+function saveMeUser(clusterName, user) {
   try {
     if (user) {
-      window.localStorage.setItem(PREFERRED_USER_KEY, user);
+      window.localStorage.setItem(ME_USER_KEY + clusterName, user);
     } else {
-      window.localStorage.removeItem(PREFERRED_USER_KEY);
+      window.localStorage.removeItem(ME_USER_KEY + clusterName);
     }
+    return true;
   } catch (error) {
-    // Browsers can disable local storage; filtering should still work for this visit.
+    return false;
   }
 }
 
@@ -130,10 +131,7 @@ function applyPreferredUser(cluster, viewState) {
     return;
   }
   viewState.preferredUserLoaded = true;
-  const preferredUser = loadPreferredUser();
-  if (preferredUser) {
-    viewState.user = preferredUser;
-  }
+  viewState.user = loadMeUser(cluster.cluster);
 }
 
 function renderSummary(payload) {
@@ -432,6 +430,7 @@ function renderControls(cluster, viewState) {
       <div class="controls-head">
         <h3 class="facet-card-title">Jobs</h3>
         <div class="job-control-actions">
+        <button type="button" class="secondary-button" data-action="set-me">${loadMeUser(cluster.cluster) ? "Edit Me" : "Set Me"}</button>
         <details class="saved-views">
           <summary class="secondary-button">Views <span aria-hidden="true">▾</span></summary>
           <div class="saved-view-menu">
@@ -768,6 +767,10 @@ function renderClusters(payload) {
     button.addEventListener("click", () => {
       showingMyViews = false;
       activeClusterName = button.dataset.clusterName;
+      const state = ensureViewState(activeClusterName);
+      state.user = loadMeUser(activeClusterName);
+      state.preferredUserLoaded = true;
+      state.page = 1;
       renderClusters(payload);
     });
   }
@@ -860,6 +863,21 @@ async function copyTableJobId(button) {
 
 function attachClusterHandlers(cluster, payload) {
   const viewState = ensureViewState(cluster.cluster);
+  clustersNode.querySelector('[data-action="set-me"]')?.addEventListener("click", () => {
+    const value = window.prompt(
+      `Your PBS username on ${cluster.cluster}. Leave blank to default to All users.`,
+      loadMeUser(cluster.cluster) || viewState.user,
+    );
+    if (value === null) return;
+    const user = value.trim();
+    if (!saveMeUser(cluster.cluster, user)) {
+      window.alert("Browser storage is unavailable. Your Me setting could not be saved.");
+      return;
+    }
+    viewState.user = user;
+    viewState.page = 1;
+    renderClusters(payload);
+  });
   for (const button of clustersNode.querySelectorAll("[data-view-action]")) {
     button.addEventListener("click", () => {
       const action = button.dataset.viewAction;
@@ -907,9 +925,6 @@ function attachClusterHandlers(cluster, payload) {
     const handler = element.tagName === "INPUT" ? "input" : "change";
     element.addEventListener(handler, () => {
       viewState[element.dataset.filterKey] = element.value;
-      if (element.dataset.filterKey === "user" && element.value) {
-        savePreferredUser(element.value);
-      }
       viewState.page = 1;
       const cursor = element.tagName === "INPUT" ? element.selectionStart : null;
       renderClusters(payload);
@@ -947,7 +962,7 @@ function attachClusterHandlers(cluster, payload) {
       }
       viewState.search = "";
       viewState.state = [];
-      viewState.user = loadPreferredUser();
+      viewState.user = loadMeUser(cluster.cluster);
       viewState.showMoreFilters = false;
       viewState.selectedPreset = "";
       viewState.page = 1;
