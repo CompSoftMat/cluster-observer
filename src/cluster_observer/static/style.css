@@ -499,7 +499,7 @@ button:disabled {
 
 .control-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(110px, 1fr)) minmax(180px, 1.5fr);
+  grid-template-columns: repeat(3, minmax(110px, 1fr)) minmax(180px, 1.5fr);
   gap: 8px;
   margin-top: 10px;
 }
@@ -898,6 +898,9 @@ tbody tr:hover {
 
 .state-legend dt { color: var(--accent); }
 .state-legend dd { margin: 0; }
+.more-filters { margin-top: 10px; }
+.more-filters summary { cursor: pointer; color: var(--muted); }
+.more-filters .control-field { max-width: 260px; margin: 8px 0; }
 .state-legend-note {
   margin: 8px 0 0;
   padding-top: 8px;

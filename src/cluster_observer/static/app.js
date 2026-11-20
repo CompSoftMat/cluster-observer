@@ -54,6 +54,7 @@ function ensureViewState(clusterName) {
       sortDirection: "asc",
       page: 1,
       showBreakdowns: false,
+      showMoreFilters: false,
       preferredUserLoaded: false,
     };
   }
@@ -105,16 +106,6 @@ function renderSummary(payload) {
   `;
 }
 
-function renderFilterChips(filters) {
-  const entries = Object.entries(filters || {});
-  if (!entries.length) {
-    return `<span class="filter-chip">all jobs</span>`;
-  }
-  return entries
-    .map(([key, values]) => `<span class="filter-chip">${escapeHtml(key)}: ${escapeHtml(values.join(", "))}</span>`)
-    .join("");
-}
-
 function clusterTab(cluster, isActive) {
   const statusClass = cluster.stale ? "status-pill stale" : (cluster.ok ? "status-pill" : "status-pill error");
   const statusLabel = cluster.stale ? "stale" : (cluster.ok ? "ok" : "error");
@@ -149,13 +140,13 @@ function sortCountItems(items) {
   });
 }
 
-function optionMarkup(label, items, selectedValue) {
+function optionMarkup(label, items, selectedValue, defaultLabel = `All ${label}`) {
   const hasSelectedValue = items.some(item => item.value === selectedValue);
   const rememberedOption = selectedValue && !hasSelectedValue
     ? `<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)} (0)</option>`
     : "";
   return `
-    <option value="">All ${escapeHtml(label)}</option>
+    <option value="">${escapeHtml(defaultLabel)}</option>
     ${rememberedOption}
     ${sortCountItems(items)
       .map(item => `<option value="${escapeHtml(item.value)}"${item.value === selectedValue ? " selected" : ""}>${escapeHtml(item.label || item.value)} (${item.count})</option>`)
@@ -236,9 +227,14 @@ function compareJobs(left, right, sortKey, sortDirection) {
   return sortDirection === "desc" ? -result : result;
 }
 
+function configuredProjects(cluster) {
+  return [...new Set((cluster.job_groups || []).flatMap(group => group.filters?.project || []))];
+}
+
 function filteredJobs(cluster, viewState) {
   const preset = (cluster.job_groups || []).find(group => group.name === viewState.selectedPreset);
-  const presetFilters = preset?.filters || {};
+  const projects = configuredProjects(cluster);
+  const presetFilters = preset?.filters || (projects.length ? {project: projects} : {});
   return cluster.jobs.filter(job => jobMatchesView(job, viewState, presetFilters));
 }
 
@@ -375,45 +371,50 @@ function renderJobTable(jobs, viewState) {
 
 function renderControls(cluster, viewState) {
   const summary = cluster.summary || {};
-  const groups = cluster.job_groups || [];
+  const projects = configuredProjects(cluster);
+  const projectItems = projects.length
+    ? projects.map(value => (summary.project_counts || []).find(item => item.value === value) || {value, count: 0})
+    : summary.project_counts || [];
+  const groups = (cluster.job_groups || []).filter(group => {
+    const keys = Object.keys(group.filters || {});
+    return keys.length && !(keys.length === 1 && keys[0] === "project" && group.name === "project");
+  });
+  const scopeLabel = projects.length ? "All lab projects" : "All jobs";
+  const activeMore = [viewState.queue && `Queue: ${viewState.queue}`, viewState.selectedPreset].filter(Boolean);
   return `
     <section class="controls-card">
       <div class="controls-head">
-        <div class="controls-title-row">
-          <h3 class="facet-card-title">Jobs</h3>
-          <div class="preset-list">
-            ${groups.map(group => `
-              <button class="preset-button${group.name === viewState.selectedPreset ? " active" : ""}" type="button" data-preset-name="${escapeHtml(group.name)}">
-                <span class="preset-name">${escapeHtml(group.name)}</span>
-                <span class="preset-count">${group.job_count}</span>
-              </button>
-            `).join("")}
-          </div>
-        </div>
-        <button type="button" class="secondary-button" data-action="clear-all">Clear</button>
+        <h3 class="facet-card-title">Jobs</h3>
+        <button type="button" class="secondary-button" data-action="clear-all">Reset to defaults</button>
       </div>
       <div class="control-grid">
+        <label class="control-field">
+          <span>Project</span>
+          <select data-filter-key="project">${optionMarkup("projects", projectItems, viewState.project, viewState.selectedPreset ? "Any project in preset" : scopeLabel)}</select>
+        </label>
         <label class="control-field">
           <span>User</span>
           <select data-filter-key="user">${optionMarkup("users", summary.user_counts || [], viewState.user)}</select>
         </label>
-        <label class="control-field">
-          <span>Queue</span>
-          <select data-filter-key="queue">${optionMarkup("queues", summary.queue_counts || [], viewState.queue)}</select>
-        </label>
         <div class="control-field" id="state-filter-mount"></div>
-        <label class="control-field">
-          <span>Project</span>
-          <select data-filter-key="project">${optionMarkup("projects", summary.project_counts || [], viewState.project)}</select>
-        </label>
         <label class="control-field control-field-search">
           <span>Search</span>
           <input type="search" value="${escapeHtml(viewState.search)}" placeholder="job id, user, queue, project" data-filter-key="search">
         </label>
       </div>
-      ${viewState.selectedPreset
-        ? `<div class="active-preset">${renderFilterChips((groups.find(group => group.name === viewState.selectedPreset) || {}).filters || {})}</div>`
-        : ""}
+      <details class="more-filters"${viewState.showMoreFilters ? " open" : ""}>
+        <summary>More filters${activeMore.length ? ` · ${escapeHtml(activeMore.join(" · "))}` : ""}</summary>
+        <label class="control-field">
+          <span>Queue</span>
+          <select data-filter-key="queue">${optionMarkup("queues", summary.queue_counts || [], viewState.queue)}</select>
+        </label>
+        ${groups.length ? `<div class="preset-list">
+          <button type="button" class="preset-button" data-preset-name="">${scopeLabel}</button>
+          ${groups.map(group => `
+            <button class="preset-button${group.name === viewState.selectedPreset ? " active" : ""}" type="button" data-preset-name="${escapeHtml(group.name)}">${escapeHtml(group.name)} · ${group.job_count}</button>
+          `).join("")}
+        </div>` : ""}
+      </details>
     </section>
   `;
 }
@@ -601,22 +602,33 @@ function renderClusters(payload) {
 
 function attachClusterHandlers(cluster, payload) {
   const viewState = ensureViewState(cluster.cluster);
+  const moreFilters = clustersNode.querySelector(".more-filters");
+  moreFilters?.addEventListener("toggle", () => {
+    if (moreFilters.isConnected) viewState.showMoreFilters = moreFilters.open;
+  });
 
   for (const element of clustersNode.querySelectorAll("[data-filter-key]")) {
     const handler = element.tagName === "INPUT" ? "input" : "change";
     element.addEventListener(handler, () => {
       viewState[element.dataset.filterKey] = element.value;
-      if (element.dataset.filterKey === "user") {
+      if (element.dataset.filterKey === "user" && element.value) {
         savePreferredUser(element.value);
       }
       viewState.page = 1;
+      const cursor = element.tagName === "INPUT" ? element.selectionStart : null;
       renderClusters(payload);
+      if (cursor !== null) {
+        const search = clustersNode.querySelector('input[data-filter-key="search"]');
+        search?.focus({preventScroll: true});
+        search?.setSelectionRange(cursor, cursor);
+      }
     });
   }
 
   for (const button of clustersNode.querySelectorAll("[data-preset-name]")) {
     button.addEventListener("click", () => {
       viewState.selectedPreset = button.dataset.presetName;
+      viewState.project = "";
       viewState.page = 1;
       renderClusters(payload);
     });
@@ -658,6 +670,8 @@ function attachClusterHandlers(cluster, payload) {
         viewState[key] = "";
       }
       viewState.search = "";
+      viewState.user = loadPreferredUser();
+      viewState.showMoreFilters = false;
       viewState.selectedPreset = "";
       viewState.page = 1;
       renderClusters(payload);
