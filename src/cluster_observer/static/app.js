@@ -665,10 +665,14 @@ function renderMyViews(payload) {
       if (Object.hasOwn(counts, code)) counts[code]++;
     }
     const other = jobs.length - counts.R - counts.Q - counts.H;
-    const parts = [`${counts.R} running`, `${counts.Q} queued`, `${counts.H} held`];
+    const parts = [
+      `<strong class="running-count">${counts.R}</strong> running`,
+      `<strong class="queued-count">${counts.Q}</strong> queued`,
+      `<strong class="held-count">${counts.H}</strong> held`,
+    ];
     if (other) parts.push(`${other} other`);
     if (cluster.stale) parts.push("stale snapshot");
-    summary.textContent = parts.join(" · ");
+    summary.innerHTML = parts.join(" · ");
 
     function renderTable() {
       table.innerHTML = renderJobTable(jobs, state);
