@@ -1090,7 +1090,32 @@ td.col-copy::before { content: none; }
   padding-inline-start: 1.25rem;
   overflow-wrap: anywhere;
 }
-.dependency-chain { list-style: none; padding: 0; }
-.dependency-chain li { margin-block: 6px; overflow-wrap: anywhere; }
-.dependency-chain small { margin-inline-start: 8px; color: var(--muted); }
 .dependency-pane > p { color: var(--muted); }
+.job-details:has(.dependency-pane) { width: min(960px, 100vw); }
+.dependency-viewport {
+  max-height: 65vh;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.dependency-graph { position: relative; }
+.dependency-edge { position: absolute; background: var(--accent); opacity: 0.6; }
+.dependency-node {
+  position: absolute;
+  width: 180px;
+  height: 60px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  text-align: left;
+}
+.dependency-node code, .dependency-node small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dependency-node small { color: var(--muted); }
+.dependency-node.selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
+.dependency-node.running { border-color: var(--green); box-shadow: inset 3px 0 var(--green); }
+.dependency-node.running small { color: var(--green); }

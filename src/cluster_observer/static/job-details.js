@@ -11,24 +11,44 @@ function jobLinks(job) {
   return (job.dependency_job_ids || []).map(id => ({id, type: types.get(id)}));
 }
 
-function dependencyRows(root, linksFor) {
+function connectedJobs(root, linksFor) {
   const seen = new Set([root]);
   const stack = [];
-  const rows = [];
-  function pushLinks(id, depth) {
-    for (const link of [...linksFor(id)].reverse()) stack.push({...link, depth});
-  }
-  pushLinks(root, 1);
+  stack.push(root);
   while (stack.length) {
-    const link = stack.pop();
-    const repeated = seen.has(link.id);
-    rows.push({...link, repeated});
-    if (!repeated) {
-      seen.add(link.id);
-      pushLinks(link.id, link.depth + 1);
+    for (const {id} of linksFor(stack.pop())) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      stack.push(id);
     }
   }
-  return rows;
+  return seen;
+}
+
+function layoutDependencyGraph(selected, predecessors, successors) {
+  const ids = connectedJobs(selected, id => [
+    ...(predecessors.get(id) || []), ...(successors.get(id) || []),
+  ]);
+  const remaining = new Map([...ids].map(id => [id, (predecessors.get(id) || []).length]));
+  const levels = new Map();
+  const ready = [...ids].filter(id => remaining.get(id) === 0);
+  for (let i = 0; i < ready.length; i++) {
+    const id = ready[i];
+    for (const link of successors.get(id) || []) {
+      levels.set(link.id, Math.max(levels.get(link.id) || 0, (levels.get(id) || 0) + 1));
+      remaining.set(link.id, remaining.get(link.id) - 1);
+      if (remaining.get(link.id) === 0) ready.push(link.id);
+    }
+  }
+  const lanes = new Map();
+  const nodes = new Map();
+  for (const id of ids) {
+    const level = levels.get(id) || 0;
+    const lane = lanes.get(level) || 0;
+    nodes.set(id, {x: 8 + level * 225, y: 8 + lane * 78});
+    lanes.set(level, lane + 1);
+  }
+  return nodes;
 }
 
 export function openJobDetails(initialJob, jobsById, trigger) {
@@ -51,21 +71,57 @@ export function openJobDetails(initialJob, jobsById, trigger) {
     }
   }
 
-  function dependencySection(title, links, id) {
-    const rows = dependencyRows(id, key => links.get(key) || []);
-    return h("section", [
-      h("h3", title),
-      rows.length ? h("ul", {class: "dependency-chain"}, rows.map(row => {
-        const target = jobsById.get(row.id);
-        const notes = [row.type, target ? target.status_label || target.state : "Outside snapshot",
-          row.repeated ? "Already shown" : ""].filter(Boolean);
-        return h("li", {style: {paddingInlineStart: `${Math.min(row.depth - 1, 8) * 0.8}rem`}}, [
-          h("span", {"aria-hidden": "true"}, "↳ "),
-          target ? h("button", {type: "button", class: "job-id-button", onClick: () => showJob(target)}, row.id)
-            : h("code", row.id),
-          h("small", notes.join(" · ")),
-        ]);
-      })) : h("p", "None reported"),
+  function dependencyGraph(selected) {
+    const nodes = layoutDependencyGraph(selected, predecessors, successors);
+    const upstream = connectedJobs(selected, id => predecessors.get(id) || []);
+    const edges = [];
+    const cards = [];
+    let width = 0;
+    let height = 0;
+    for (const [id, {x, y}] of nodes) {
+      width = Math.max(width, x + 188);
+      height = Math.max(height, y + 70);
+      const target = jobsById.get(id);
+      const running = id !== selected && upstream.has(id) && (target?.state || "").toUpperCase() === "R";
+      const links = predecessors.get(id) || [];
+      for (const link of links) {
+        const parent = nodes.get(link.id);
+        const start = parent.x + 180;
+        const bend = x > start ? (x + start) / 2 : Math.max(x, parent.x) + 194;
+        const end = x > start ? x : x + 180;
+        const top = parent.y + 30;
+        const bottom = y + 30;
+        width = Math.max(width, bend + 8);
+        for (const [left, lineTop, w, lineHeight] of [
+          [Math.min(start, bend), top, Math.abs(bend - start), 1],
+          [bend, Math.min(top, bottom), 1, Math.abs(bottom - top)],
+          [Math.min(bend, end), bottom, Math.abs(end - bend), 1],
+        ]) {
+          edges.push(h("span", {class: "dependency-edge", "aria-hidden": "true",
+            style: {left: left + "px", top: lineTop + "px", width: w + "px", height: lineHeight + "px"}}));
+        }
+      }
+      const status = target?.status_label || target?.state || "Outside snapshot";
+      const types = [...new Set(links.map(link => link.type).filter(Boolean))].join(", ");
+      cards.push(h(target ? "button" : "div", {
+        key: id,
+        class: ["dependency-node", {selected: id === selected, running}],
+        style: {left: x + "px", top: y + "px"},
+        ...(target ? {type: "button", onClick: () => showJob(target), "aria-pressed": id === selected} : {}),
+        title: [id, status, ...links.map(link => `${link.type || "depends on"}: ${link.id}`)].join("\n"),
+      }, [
+        h("code", id),
+        h("small", [id === selected ? "Selected" : running ? "Running prerequisite" : status, types].filter(Boolean).join(" · ")),
+      ]));
+    }
+    function centerSelected({el}) {
+      const node = nodes.get(selected);
+      el.scrollLeft = node.x - (el.clientWidth - 180) / 2;
+      el.scrollTop = node.y - (el.clientHeight - 60) / 2;
+    }
+    return h("div", {key: selected, class: "dependency-viewport", tabindex: 0,
+      "aria-label": "Dependency graph", onVnodeMounted: centerSelected}, [
+      h("div", {class: "dependency-graph", style: {width: width + "px", height: height + "px"}}, [...edges, ...cards]),
     ]);
   }
   const resourceCount = value => value == null || value === "" ? "Unknown" : value;
@@ -135,9 +191,8 @@ export function openJobDetails(initialJob, jobsById, trigger) {
           ? h("button", {type: "button", onClick: () => showJob(previousJobs.value.pop(), false)}, "Back to previous job")
           : null,
         showDependencies.value ? h("div", {class: "dependency-pane"}, [
-          h("p", "Links reported in the current cluster snapshot."),
-          dependencySection("Upstream · prerequisites", predecessors, current.job_id),
-          dependencySection("Downstream · dependent jobs", successors, current.job_id),
+          h("p", "Prerequisites → dependent jobs · current snapshot"),
+          dependencyGraph(current.job_id),
         ]) : h("dl", {class: "job-details-fields"}, fields.flatMap(([label, value]) => [
           h("dt", label),
           h("dd", value || "Unknown"),
