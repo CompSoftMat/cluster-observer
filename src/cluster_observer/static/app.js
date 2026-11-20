@@ -629,10 +629,14 @@ function renderMyViews(payload) {
       ${savedViews.views.length ? savedViews.views.map((view, index) => `
         <article class="cluster-card my-view-card" data-overview-index="${index}">
           <header class="my-view-header">
-            <div><h3>${escapeHtml(view.name)}</h3><p>${escapeHtml(view.cluster)}</p></div>
+            <button class="my-view-toggle" type="button"
+              aria-expanded="${view.expanded !== false}" aria-controls="my-view-jobs-${index}">
+              <span class="my-view-title">${escapeHtml(view.name)}</span>
+              <span class="my-view-meta">${escapeHtml(view.cluster)} · <span data-overview-counts></span></span>
+            </button>
             <button class="secondary-button" type="button" data-delete-view aria-label="Delete view ${escapeHtml(view.name)}">Delete</button>
           </header>
-          <div data-overview-table></div>
+          <div id="my-view-jobs-${index}" data-overview-table${view.expanded === false ? " hidden" : ""}></div>
         </article>`).join("") : '<p class="empty">Save a view from a cluster’s Views menu to see it here.</p>'}
     </section>`;
 
@@ -643,20 +647,42 @@ function renderMyViews(payload) {
     });
     const cluster = payload.clusters.find(item => item.cluster === view.cluster);
     const table = card.querySelector("[data-overview-table]");
+    const summary = card.querySelector("[data-overview-counts]");
+    const toggle = card.querySelector(".my-view-toggle");
     if (!cluster || (!cluster.ok && !cluster.stale)) {
-      table.textContent = "Cluster data unavailable.";
+      summary.textContent = "Data unavailable";
+      toggle.disabled = true;
+      toggle.removeAttribute("aria-expanded");
+      table.hidden = true;
       continue;
-    }
-    if (cluster.stale) {
-      const warning = document.createElement("p");
-      warning.className = "stale-warning";
-      warning.textContent = "Showing the last successful snapshot.";
-      card.insertBefore(warning, table);
     }
     const state = overviewStates.get(view) || {...view.filters, page: 1};
     overviewStates.set(view, state);
-    table.innerHTML = renderJobTable(filteredJobs(cluster, state), state);
-    attachJobTableHandlers(table, cluster, state, () => renderClusters(payload));
+    const jobs = filteredJobs(cluster, state);
+    const counts = {R: 0, Q: 0, H: 0};
+    for (const job of jobs) {
+      const code = (job.state || "").toUpperCase();
+      if (Object.hasOwn(counts, code)) counts[code]++;
+    }
+    const other = jobs.length - counts.R - counts.Q - counts.H;
+    const parts = [`${counts.R} running`, `${counts.Q} queued`, `${counts.H} held`];
+    if (other) parts.push(`${other} other`);
+    if (cluster.stale) parts.push("stale snapshot");
+    summary.textContent = parts.join(" · ");
+
+    function renderTable() {
+      table.innerHTML = renderJobTable(jobs, state);
+      attachJobTableHandlers(table, cluster, state, renderTable);
+    }
+
+    if (!table.hidden) renderTable();
+    toggle.addEventListener("click", () => {
+      view.expanded = table.hidden;
+      table.hidden = !view.expanded;
+      toggle.setAttribute("aria-expanded", String(view.expanded));
+      if (view.expanded && !table.hasChildNodes()) renderTable();
+      persistSavedViews();
+    });
   }
 }
 
@@ -793,7 +819,7 @@ function attachClusterHandlers(cluster, payload) {
         const existing = savedViews.views.findIndex(item => item.name === name);
         if (existing >= 0 && !window.confirm(`Replace “${name}”?`)) return;
         const filters = Object.fromEntries(VIEW_FIELDS.map(key => [key, viewState[key]]));
-        const entry = {name, cluster: cluster.cluster, filters};
+        const entry = {name, cluster: cluster.cluster, filters, expanded: savedViews.views[existing]?.expanded ?? true};
         if (existing < 0) savedViews.views.push(entry);
         else savedViews.views[existing] = entry;
       } else if (action === "apply") {

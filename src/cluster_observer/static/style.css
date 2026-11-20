@@ -996,7 +996,22 @@ tbody tr:hover {
 .my-views-page { display: grid; gap: 14px; min-width: 0; }
 .my-views-page h2, .my-view-card h3 { margin: 0; }
 .my-view-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
-.my-view-card header p { margin: 4px 0 0; color: var(--muted); }
+.my-view-toggle {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.my-view-toggle:hover:not(:disabled), .my-view-toggle:focus-visible { border-color: var(--accent); }
+.my-view-title { font-weight: 650; }
+.my-view-toggle[aria-expanded="true"] .my-view-title::before { content: "▾ "; }
+.my-view-toggle[aria-expanded="false"] .my-view-title::before { content: "▸ "; }
+.my-view-meta { color: var(--muted); font-size: 0.85rem; }
 .saved-view-actions, .saved-view-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .saved-view-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .saved-view-name { flex: 1 0 100%; text-align: left; overflow-wrap: anywhere; }
