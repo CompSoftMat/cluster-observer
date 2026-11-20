@@ -9,7 +9,7 @@ const refreshButton = document.getElementById("refresh-button");
 const dashboardTitleNode = document.getElementById("dashboard-title");
 
 const PAGE_SIZE = 40;
-const SNAPSHOT_KEY = "cluster-observer.job-snapshot";
+const SNAPSHOT_KEY = "cluster-observer.job-snapshot.v2";
 const snapshotChanges = new Map();
 const FACET_PREVIEW_LIMIT = 10;
 const FILTER_KEYS = ["user", "queue", "project"];
@@ -673,20 +673,21 @@ function trackSnapshotChanges(payload) {
       const old = previous.get(cluster.cluster);
       const epoch = cluster.last_success_epoch ?? payload.generated_at_epoch;
       if (old && epoch <= old.epoch) continue;
-      const jobs = cluster.jobs.map(job => [job.job_id, job.state, job.outcome || ""]);
+      const jobs = cluster.jobs;
       const changes = [];
       if (old) {
-        const before = new Map(old.jobs.map(([id, state, outcome]) => [id, {state, outcome}]));
-        for (const [id, state, outcome] of jobs) {
-          const prior = before.get(id);
+        const before = new Map(old.jobs.map(job => [job.job_id, job]));
+        for (const job of jobs) {
+          const {job_id, state, outcome} = job;
+          const prior = before.get(job_id);
           if (outcome !== prior?.outcome && ["successful", "failed", "cancelled"].includes(outcome)) {
-            changes.push([outcome === "successful" ? "Completed" : outcome === "failed" ? "Failed" : "Cancelled", id]);
+            changes.push([outcome === "successful" ? "Completed" : outcome === "failed" ? "Failed" : "Cancelled", job, prior]);
           } else if (state === "R" && prior?.state !== "R") {
-            changes.push(["Started or newly seen running", id]);
+            changes.push(["Started or newly seen running", job, prior]);
           }
-          before.delete(id);
+          before.delete(job_id);
         }
-        for (const id of before.keys()) changes.push(["No longer listed", id]);
+        for (const job of before.values()) changes.push(["No longer listed", job]);
       }
       snapshotChanges.set(cluster.cluster, changes);
       previous.set(cluster.cluster, {epoch, jobs});
@@ -697,17 +698,23 @@ function trackSnapshotChanges(payload) {
   }
 }
 
-function renderSnapshotChanges() {
+function renderSnapshotChanges(clusters) {
   const groups = new Map();
   for (const [cluster, changes] of snapshotChanges) {
-    for (const [label, id] of changes) {
+    const views = savedViews.views.filter(view => view.cluster === cluster);
+    const source = clusters.get(cluster);
+    if (!source || !views.length) continue;
+    for (const [label, job, prior] of changes) {
+      const candidates = prior ? [job, prior] : [job];
+      const matches = views.some(view => filteredJobs({...source, jobs: candidates}, view.filters).length);
+      if (!matches) continue;
       if (!groups.has(label)) groups.set(label, []);
-      groups.get(label).push(`${cluster} · ${id}`);
+      groups.get(label).push(`${cluster} · ${job.job_id}`);
     }
   }
   if (!groups.size) return "";
-  return `<section class="snapshot-summary" aria-label="Changes in tracked jobs">
-    <span>Changes in tracked jobs</span>
+  return `<section class="snapshot-summary" aria-label="Changes in My Views">
+    <span>Changes in My Views</span>
     ${[...groups].map(([label, jobs]) => `<details class="snapshot-changes">
       <summary>${jobs.length} ${label.toLowerCase()}</summary>
       <ul>${jobs.map(job => `<li>${escapeHtml(job)}</li>`).join("")}</ul>
@@ -726,7 +733,7 @@ function renderMyViews(payload) {
           <button type="button" class="secondary-button" data-view-mode="combined" aria-pressed="${combinedViews}">Combined</button>
         </div>` : ""}
       </header>
-      ${renderSnapshotChanges()}
+      ${renderSnapshotChanges(clusters)}
       ${savedViews.views.length ? (combinedViews ? '<div data-combined-table></div>' : savedViews.views.map((view, index) => `
         <article class="cluster-card my-view-card" data-overview-index="${index}">
           <header class="my-view-header">
