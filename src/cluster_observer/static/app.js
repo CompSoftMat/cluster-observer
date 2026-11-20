@@ -430,7 +430,7 @@ function renderControls(cluster, viewState) {
       <div class="controls-head">
         <h3 class="facet-card-title">Jobs</h3>
         <div class="job-control-actions">
-        <button type="button" class="secondary-button" data-action="set-me">${loadMeUser(cluster.cluster) ? "Edit Me" : "Set Me"}</button>
+        <button type="button" class="secondary-button" data-action="set-me">Default user</button>
         <details class="saved-views">
           <summary class="secondary-button">Views <span aria-hidden="true">▾</span></summary>
           <div class="saved-view-menu">
@@ -865,13 +865,13 @@ function attachClusterHandlers(cluster, payload) {
   const viewState = ensureViewState(cluster.cluster);
   clustersNode.querySelector('[data-action="set-me"]')?.addEventListener("click", () => {
     const value = window.prompt(
-      `Your PBS username on ${cluster.cluster}. Leave blank to default to All users.`,
+      `Default PBS username for ${cluster.cluster}. Leave blank to show all users by default.`,
       loadMeUser(cluster.cluster) || viewState.user,
     );
     if (value === null) return;
     const user = value.trim();
     if (!saveMeUser(cluster.cluster, user)) {
-      window.alert("Browser storage is unavailable. Your Me setting could not be saved.");
+      window.alert("Browser storage is unavailable. Your default user could not be saved.");
       return;
     }
     viewState.user = user;
@@ -1117,7 +1117,7 @@ settingsFile.addEventListener("change", async () => {
   if (!file) return;
   try {
     const {views, defaultName, me} = parseSettings(await file.text());
-    if (!window.confirm("Replace this browser’s saved views and “Me” usernames with the settings in this file?")) return;
+    if (!window.confirm("Replace this browser’s saved views and default users with the settings in this file?")) return;
     const storage = window.localStorage;
     const imported = new Map(me.map(([cluster, user]) => [ME_USER_KEY + cluster, user]));
     imported.set(SAVED_VIEWS_KEY, JSON.stringify({views, defaultName}));
