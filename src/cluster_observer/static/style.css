@@ -1,15 +1,15 @@
 :root {
   color-scheme: dark;
-  --bg: #181820;
-  --panel: #22222c;
-  --panel-strong: #262633;
-  --ink: #d6d0c4;
-  --muted: #9b96a8;
+  --bg: #16161d;
+  --panel: #1f1f28;
+  --panel-strong: #2a2a37;
+  --ink: #dcd7ba;
+  --muted: #b8b4d0;
   --accent: #7e9cd8;
   --green: #98bb6c;
   --danger: #e46876;
   --warn: #e6c384;
-  --border: #343444;
+  --border: #363646;
 }
 
 * {
@@ -118,8 +118,8 @@ button {
 }
 
 button:hover {
-  background: #2d2d39;
-  border-color: #404055;
+  background: #363646;
+  border-color: #54546d;
 }
 
 button:disabled {
@@ -202,7 +202,7 @@ button:disabled {
 
 .cluster-tab.active,
 .my-views-nav[aria-pressed="true"] {
-  background: linear-gradient(100deg, #30384b, #242630);
+  background: linear-gradient(100deg, #2d4f67, #223249);
   box-shadow: inset 3px 0 var(--accent);
   border-color: rgba(126, 156, 216, 0.3);
 }
@@ -294,7 +294,7 @@ button:disabled {
   gap: 8px 18px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: #1d1d26;
+  background: #1a1a22;
   border: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.86rem;
@@ -308,7 +308,7 @@ button:disabled {
 .quota-card {
   padding: 12px;
   border-radius: 10px;
-  background: #1d1d26;
+  background: #1a1a22;
   border: 1px solid var(--border);
 }
 
@@ -370,7 +370,7 @@ button:disabled {
 }
 
 .quota-project.manual .quota-fill {
-  background: #777b91;
+  background: #938aa9;
 }
 
 .quota-project.manual .quota-fill.own {
@@ -404,7 +404,7 @@ button:disabled {
   margin-top: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: #303040;
+  background: #363646;
 }
 
 .quota-fill {
@@ -415,7 +415,7 @@ button:disabled {
 }
 
 .quota-fill.external {
-  background: #777b91;
+  background: #938aa9;
 }
 
 .quota-fill.own {
@@ -463,7 +463,7 @@ button:disabled {
   overflow-x: auto;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: #1d1d26;
+  background: #1a1a22;
 }
 
 .controls-card,
@@ -472,16 +472,16 @@ button:disabled {
   padding: 16px;
   border-radius: 14px;
   border: 1px solid var(--border);
-  background: #1d1d26;
+  background: #1a1a22;
 }
 
 .results-card {
-  background: #252631;
+  background: #2a2a37;
 }
 
 .results-card .table-shell {
-  background: #22232c;
-  border-color: #383b48;
+  background: #1f1f28;
+  border-color: #363646;
 }
 
 .results-card .col-resource,
@@ -494,8 +494,8 @@ button:disabled {
   top: 12px;
   z-index: 4;
   padding: 12px;
-  background: #202129;
-  border-color: #30313c;
+  background: #1f1f28;
+  border-color: #363646;
 }
 
 .facet-card-head,
@@ -555,7 +555,7 @@ input[type="search"] {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #20202a;
+  background: #1f1f28;
   color: var(--ink);
   padding: 8px 10px;
   font: inherit;
@@ -579,7 +579,7 @@ input[type="search"]:focus {
 .preset-button,
 .facet-chip {
   border-radius: 12px;
-  background: #20202a;
+  background: #1f1f28;
   border: 1px solid var(--border);
   padding: 7px 10px;
 }
@@ -726,7 +726,7 @@ td {
 th {
   color: var(--muted);
   font-weight: 600;
-  background: #272732;
+  background: #2a2a37;
   letter-spacing: 0.02em;
   position: sticky;
   top: 0;
@@ -784,9 +784,9 @@ td.col-queue {
   justify-content: center;
   padding: 4px 9px;
   border-radius: 999px;
-  background: #303040;
-  border: 1px solid #424257;
-  color: #c5c9c5;
+  background: #363646;
+  border: 1px solid #54546d;
+  color: #c8c093;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
