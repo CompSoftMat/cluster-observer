@@ -25,6 +25,8 @@ let activeClusterName = null;
 let showingMyViews = false;
 const clusterViewState = Object.create(null);
 const overviewStates = new Map();
+let combinedViews = false;
+const combinedState = {sortKey: "state", sortDirection: "asc", page: 1};
 const savedViews = loadSavedViews();
 
 function loadSavedViews() {
@@ -331,15 +333,16 @@ function renderFacetSection(title, key, items, activeValue) {
   `;
 }
 
-function jobRow(job) {
+function jobRow(job, showCluster) {
   const used = job.used_walltime || "—";
   const requested = job.requested_walltime || "—";
   return `
     <tr>
       <td data-label="Job" class="col-job">
-        <button class="job-id-button" type="button" data-job-id="${escapeHtml(job.job_id)}"><code>${escapeHtml(job.job_id)}</code></button>
+        <button class="job-id-button" type="button" data-job-id="${escapeHtml(job.job_id)}" data-job-cluster="${escapeHtml(job.cluster || "")}"><code>${escapeHtml(job.job_id)}</code></button>
         ${job.project ? `<span class="row-secondary">${escapeHtml(job.project)}</span>` : ""}
       </td>
+      ${showCluster ? `<td data-label="Cluster">${escapeHtml(job.cluster)}</td>` : ""}
       <td data-label="User" class="col-user">${escapeHtml(userLabel(job))}</td>
       <td data-label="State" class="col-state">${statusMarkup(job)}</td>
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
@@ -365,7 +368,7 @@ function sortableHeader(label, sortKey, viewState) {
   `;
 }
 
-function renderJobTable(jobs, viewState) {
+function renderJobTable(jobs, viewState, showCluster = false) {
   if (!jobs.length) {
     return `<p class="empty">No jobs match the current filters.</p>`;
   }
@@ -396,6 +399,7 @@ function renderJobTable(jobs, viewState) {
           <thead>
             <tr>
               ${sortableHeader("Job", "submitted_at", viewState)}
+              ${showCluster ? sortableHeader("Cluster", "cluster", viewState) : ""}
               ${sortableHeader("User", "user", viewState)}
               ${sortableHeader("State", "state", viewState)}
               ${sortableHeader("Queue", "queue", viewState)}
@@ -404,7 +408,7 @@ function renderJobTable(jobs, viewState) {
               <th class="col-copy" scope="col" aria-label="Copy job ID"></th>
             </tr>
           </thead>
-          <tbody>${pageJobs.map(jobRow).join("")}</tbody>
+          <tbody>${pageJobs.map(job => jobRow(job, showCluster)).join("")}</tbody>
         </table>
       </div>
     </section>
@@ -625,11 +629,39 @@ function deleteSavedView(view) {
   return true;
 }
 
+function renderCombinedViews(container, clusters) {
+  const matches = new Map();
+  const warnings = new Set();
+  for (const view of savedViews.views) {
+    const cluster = clusters.get(view.cluster);
+    if (!cluster || (!cluster.ok && !cluster.stale)) {
+      warnings.add(`${view.cluster}: unavailable`);
+      continue;
+    }
+    if (cluster.stale) warnings.add(`${view.cluster}: stale snapshot`);
+    for (const job of filteredJobs(cluster, view.filters)) {
+      const key = JSON.stringify([cluster.cluster, job.job_id]);
+      matches.set(key, {...job, cluster: cluster.cluster});
+    }
+  }
+  container.innerHTML = `
+    ${warnings.size ? `<p class="stale-warning">${escapeHtml([...warnings].join(" · "))}</p>` : ""}
+    ${renderJobTable([...matches.values()], combinedState, true)}`;
+  attachJobTableHandlers(container, clusters, combinedState, () => renderCombinedViews(container, clusters));
+}
+
 function renderMyViews(payload) {
+  const clusters = new Map(payload.clusters.map(cluster => [cluster.cluster, cluster]));
   clustersNode.innerHTML = `
     <section class="my-views-page">
-      <h2>My Views</h2>
-      ${savedViews.views.length ? savedViews.views.map((view, index) => `
+      <header class="my-view-header">
+        <h2>My Views</h2>
+        ${savedViews.views.length ? `<div class="job-control-actions">
+          <button type="button" class="secondary-button" data-view-mode="cards" aria-pressed="${!combinedViews}">Cards</button>
+          <button type="button" class="secondary-button" data-view-mode="combined" aria-pressed="${combinedViews}">Combined</button>
+        </div>` : ""}
+      </header>
+      ${savedViews.views.length ? (combinedViews ? '<div data-combined-table></div>' : savedViews.views.map((view, index) => `
         <article class="cluster-card my-view-card" data-overview-index="${index}">
           <header class="my-view-header">
             <button class="my-view-toggle" type="button"
@@ -640,15 +672,26 @@ function renderMyViews(payload) {
             <button class="secondary-button" type="button" data-delete-view aria-label="Delete view ${escapeHtml(view.name)}">Delete</button>
           </header>
           <div id="my-view-jobs-${index}" data-overview-table${view.expanded === false ? " hidden" : ""}></div>
-        </article>`).join("") : '<p class="empty">Save a view from a cluster’s Views menu to see it here.</p>'}
+        </article>`).join("")) : '<p class="empty">Save a view from a cluster’s Views menu to see it here.</p>'}
     </section>`;
 
+  for (const button of clustersNode.querySelectorAll("[data-view-mode]")) {
+    button.addEventListener("click", () => {
+      combinedViews = button.dataset.viewMode === "combined";
+      renderMyViews(payload);
+      clustersNode.querySelector('[data-view-mode][aria-pressed="true"]')?.focus({preventScroll: true});
+    });
+  }
+  if (combinedViews && savedViews.views.length) {
+    renderCombinedViews(clustersNode.querySelector("[data-combined-table]"), clusters);
+    return;
+  }
   for (const card of clustersNode.querySelectorAll("[data-overview-index]")) {
     const view = savedViews.views[Number(card.dataset.overviewIndex)];
     card.querySelector("[data-delete-view]").addEventListener("click", () => {
       if (deleteSavedView(view)) renderClusters(payload);
     });
-    const cluster = payload.clusters.find(item => item.cluster === view.cluster);
+    const cluster = clusters.get(view.cluster);
     const table = card.querySelector("[data-overview-table]");
     const summary = card.querySelector("[data-overview-counts]");
     const toggle = card.querySelector(".my-view-toggle");
@@ -921,9 +964,16 @@ function attachClusterHandlers(cluster, payload) {
 }
 
 function attachJobTableHandlers(container, cluster, viewState, render) {
-  const jobsById = new Map((cluster.jobs || []).map(job => [job.job_id, job]));
+  const clusters = cluster instanceof Map ? cluster : new Map([[cluster.cluster, cluster]]);
+  const jobIndexes = new Map();
   for (const button of container.querySelectorAll("[data-job-id]")) {
     button.addEventListener("click", () => {
+      const source = clusters.get(button.dataset.jobCluster) || (cluster instanceof Map ? null : cluster);
+      if (!source) return;
+      if (!jobIndexes.has(source)) {
+        jobIndexes.set(source, new Map((source.jobs || []).map(job => [job.job_id, job])));
+      }
+      const jobsById = jobIndexes.get(source);
       openJobDetails(jobsById.get(button.dataset.jobId), jobsById, button);
     });
   }
@@ -937,7 +987,7 @@ function attachJobTableHandlers(container, cluster, viewState, render) {
         viewState.sortDirection = viewState.sortDirection === "asc" ? "desc" : "asc";
       } else {
         viewState.sortKey = sortKey;
-        viewState.sortDirection = sortKey === "submitted_at" ? "asc" : "desc";
+        viewState.sortDirection = ["submitted_at", "cluster", "state"].includes(sortKey) ? "asc" : "desc";
       }
       render();
     });
