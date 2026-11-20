@@ -1090,3 +1090,7 @@ td.col-copy::before { content: none; }
   padding-inline-start: 1.25rem;
   overflow-wrap: anywhere;
 }
+.dependency-chain { list-style: none; padding: 0; }
+.dependency-chain li { margin-block: 6px; overflow-wrap: anywhere; }
+.dependency-chain small { margin-inline-start: 8px; color: var(--muted); }
+.dependency-pane > p { color: var(--muted); }
