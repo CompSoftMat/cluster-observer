@@ -21,7 +21,7 @@ const stateLegend = [
 ];
 
 const StateFilter = {
-  props: ["states", "selected"],
+  props: ["states", "selected", "onSelect"],
   setup(props) {
     const tooltip = ref(null);
 
@@ -38,13 +38,6 @@ const StateFilter = {
     }
 
     return () => {
-      const options = [h("option", {value: ""}, "All states")];
-      if (props.selected && !props.states.some(state => state.value === props.selected)) {
-        options.push(h("option", {value: props.selected}, `${props.selected} (0)`));
-      }
-      for (const state of props.states) {
-        options.push(h("option", {value: state.value}, `${state.label || state.value} (${state.count})`));
-      }
       return [
         h("div", {class: "state-filter-label"}, [
           h("label", {for: "state-filter"}, "State"),
@@ -64,14 +57,34 @@ const StateFilter = {
             ]),
           ]),
         ]),
-        h("select", {id: "state-filter", value: props.selected, "data-filter-key": "state"}, options),
+        h("details", {class: "state-choices"}, [
+          h("summary", {id: "state-filter"}, props.selected.map(value =>
+            props.states.find(state => state.value === value)?.label || value
+          ).join(", ") || "All states"),
+          h("div", {class: "state-choice-list"}, [
+            h("button", {type: "button", onClick: () => props.onSelect([])}, "All states"),
+            ...props.states.map(state => h("label", {key: state.value}, [
+              h("input", {
+                type: "checkbox",
+                value: state.value,
+                checked: props.selected.includes(state.value),
+                onChange: event => {
+                  const next = props.selected.filter(value => value !== state.value);
+                  if (event.target.checked) next.push(state.value);
+                  props.onSelect(next, state.value);
+                },
+              }),
+              `${state.label || state.value} (${state.count})`,
+            ])),
+          ]),
+        ]),
       ];
     };
   },
 };
 
-export function mountStateFilter(node, states, selected) {
-  const app = createApp(StateFilter, {states, selected});
+export function mountStateFilter(node, states, selected, onSelect) {
+  const app = createApp(StateFilter, {states, selected, onSelect});
   app.mount(node);
   return () => app.unmount();
 }
