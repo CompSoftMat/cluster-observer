@@ -16,6 +16,7 @@
         <section class="summary" id="summary" aria-label="Dashboard status"></section>
         <div class="actions">
           <button id="refresh-button" type="button">Reload</button>
+          <button id="settings-button" type="button"><span aria-hidden="true">⚙</span> Settings</button>
           <p id="last-updated">Waiting for first refresh.</p>
         </div>
       </section>
@@ -25,6 +26,17 @@
         <section class="clusters" id="clusters"></section>
       </section>
     </main>
+    <dialog id="settings-dialog" class="job-details" aria-labelledby="settings-title">
+      <header class="job-details-header">
+        <h2 id="settings-title">Browser settings</h2>
+        <form method="dialog"><button>Close</button></form>
+      </header>
+      <p>Transfer saved views and “Me” usernames between browsers using a JSON file.</p>
+      <button id="export-settings" type="button">Export JSON</button>
+      <button id="import-settings" type="button">Import JSON</button>
+      <input id="settings-file" type="file" accept=".json,application/json" hidden>
+      <p id="settings-message" role="status"></p>
+    </dialog>
     <script type="module" src="/static/app.js"></script>
   </body>
 </html>

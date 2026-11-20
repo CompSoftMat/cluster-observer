@@ -1055,6 +1055,94 @@ function renderUpdateAge() {
   lastUpdatedNode.textContent = `Updated ${ageLabel}`;
 }
 
+function parseSettings(text) {
+  const data = JSON.parse(text);
+  const isText = value => typeof value === "string";
+  if (data?.version !== 1 || !Array.isArray(data.views) || !isText(data.defaultName) ||
+      !Array.isArray(data.me) || !data.me.every(entry =>
+        Array.isArray(entry) && entry.length === 2 && entry.every(isText) && entry.every(value => value.trim())
+      )) {
+    throw new Error("Choose a valid Cluster Observer settings export.");
+  }
+  const names = new Set();
+  const views = data.views.map(view => {
+    if (!isText(view?.name) || !view.name.trim() || names.has(view.name) ||
+        !isText(view.cluster) || !view.cluster.trim() ||
+        !VIEW_FIELDS.every(key => key === "state"
+          ? Array.isArray(view.filters?.state) && view.filters.state.every(isText)
+          : isText(view.filters?.[key])) ||
+        !["asc", "desc"].includes(view.filters.sortDirection)) {
+      throw new Error("The file contains an invalid or duplicate saved view.");
+    }
+    names.add(view.name);
+    return {
+      name: view.name,
+      cluster: view.cluster,
+      expanded: view.expanded !== false,
+      filters: Object.fromEntries(VIEW_FIELDS.map(key => [key, view.filters[key]])),
+    };
+  });
+  return {views, defaultName: names.has(data.defaultName) ? data.defaultName : "", me: data.me};
+}
+
+const settingsDialog = document.getElementById("settings-dialog");
+const settingsMessage = document.getElementById("settings-message");
+const settingsFile = document.getElementById("settings-file");
+document.getElementById("settings-button").addEventListener("click", () => {
+  settingsMessage.textContent = "";
+  settingsDialog.showModal();
+});
+document.getElementById("export-settings").addEventListener("click", () => {
+  try {
+    const storage = window.localStorage;
+    const me = Object.keys(storage).filter(key => key.startsWith(ME_USER_KEY))
+      .map(key => [key.slice(ME_USER_KEY.length), storage.getItem(key)])
+      .filter(([, user]) => user);
+    const json = JSON.stringify({version: 1, ...savedViews, me}, null, 2);
+    const url = URL.createObjectURL(new Blob([json], {type: "application/json"}));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "cluster-observer-settings.json";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    settingsMessage.textContent = "Settings exported.";
+  } catch (error) {
+    settingsMessage.textContent = `Export failed: ${error.message}`;
+  }
+});
+document.getElementById("import-settings").addEventListener("click", () => settingsFile.click());
+settingsFile.addEventListener("change", async () => {
+  const file = settingsFile.files[0];
+  settingsFile.value = "";
+  if (!file) return;
+  try {
+    const {views, defaultName, me} = parseSettings(await file.text());
+    if (!window.confirm("Replace this browser’s saved views and “Me” usernames with the settings in this file?")) return;
+    const storage = window.localStorage;
+    const imported = new Map(me.map(([cluster, user]) => [ME_USER_KEY + cluster, user]));
+    imported.set(SAVED_VIEWS_KEY, JSON.stringify({views, defaultName}));
+    const keys = new Set([...imported.keys(), ...Object.keys(storage).filter(key => key.startsWith(ME_USER_KEY))]);
+    const previous = new Map([...keys].map(key => [key, storage.getItem(key)]));
+    function writeSettings(entries) {
+      for (const key of keys) {
+        if (entries.get(key) == null) storage.removeItem(key);
+      }
+      for (const [key, value] of entries) {
+        if (value != null) storage.setItem(key, value);
+      }
+    }
+    try {
+      writeSettings(imported);
+    } catch (error) {
+      writeSettings(previous);
+      throw error;
+    }
+    window.location.reload();
+  } catch (error) {
+    settingsMessage.textContent = `Import failed: ${error.message}`;
+  }
+});
+
 refreshButton.addEventListener("click", () => refresh(true));
 document.addEventListener("pointerdown", event => {
   const menu = clustersNode.querySelector(".saved-views[open]");
