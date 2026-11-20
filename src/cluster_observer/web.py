@@ -31,8 +31,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/static/style.css":
             self._send_bytes(_read_static_file("style.css"), "text/css; charset=utf-8")
             return
-        if path == "/static/app.js":
-            self._send_bytes(_read_static_file("app.js"), "application/javascript; charset=utf-8")
+        if path in {"/static/app.js", "/static/state-filter.js", "/static/vue.runtime.js"}:
+            self._send_bytes(_read_static_file(path.removeprefix("/static/")), "application/javascript; charset=utf-8")
             return
         if path == "/api/jobs":
             force_refresh = parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]

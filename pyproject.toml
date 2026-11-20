@@ -23,4 +23,4 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-cluster_observer = ["static/*.html", "static/*.css", "static/*.js"]
+cluster_observer = ["static/*.html", "static/*.css", "static/*.js", "static/*.txt"]

@@ -1,3 +1,5 @@
+import {mountStateFilter} from "./state-filter.js";
+
 const summaryNode = document.getElementById("summary");
 const clusterNavNode = document.getElementById("cluster-nav");
 const clustersNode = document.getElementById("clusters");
@@ -275,31 +277,6 @@ function statusMarkup(job) {
   return `<span tabindex="0" title="${explanation}" aria-label="${explanation}" class="${stateClass(job.state)} ${escapeHtml(job.outcome || "")}">${escapeHtml(badge)}</span>`;
 }
 
-function stateHelp() {
-  return `<span class="state-help">
-    <button type="button" class="state-help-button" aria-label="State meanings" aria-describedby="state-meanings">?</button>
-    <span id="state-meanings" role="tooltip" class="state-help-tooltip">R — Running
-Q — Queued
-H — Held
-H/DEP — Waiting for dependency; hover the badge for predecessor IDs
-B — Array parent / begun
-E — Exiting
-S — Suspended
-T — In transit
-W — Waiting for scheduled execution
-U — Suspended by scheduler
-M — Moved to another server
-X — Finished/deleted array subjob
-F or C — Finished
-/OK — Completed successfully (exit status 0)
-/ERR — Failed (nonzero exit status)
-/CAN — Explicitly cancelled
-/? — Finished; outcome unknown (exit status missing)
-
-The prefix preserves the PBS state, e.g. X/OK or F/OK. Hover a badge for details. Completion describes a job/segment; whole-chain progress requires campaign metadata.</span>
-  </span>`;
-}
-
 function renderFacetSection(title, key, items, activeValue) {
   const visibleItems = sortCountItems(items).slice(0, FACET_PREVIEW_LIMIT);
   if (!visibleItems.length) {
@@ -424,10 +401,7 @@ function renderControls(cluster, viewState) {
           <span>Queue</span>
           <select data-filter-key="queue">${optionMarkup("queues", summary.queue_counts || [], viewState.queue)}</select>
         </label>
-        <div class="control-field">
-          <div class="state-filter-label"><label for="state-filter">State</label>${stateHelp()}</div>
-          <select id="state-filter" data-filter-key="state">${optionMarkup("states", summary.state_counts || [], viewState.state)}</select>
-        </div>
+        <div class="control-field" id="state-filter-mount"></div>
         <label class="control-field">
           <span>Project</span>
           <select data-filter-key="project">${optionMarkup("projects", summary.project_counts || [], viewState.project)}</select>
@@ -581,7 +555,11 @@ function renderClusterCard(cluster, viewState) {
   `;
 }
 
+let unmountStateFilter;
+
 function renderClusters(payload) {
+  unmountStateFilter?.();
+  unmountStateFilter = undefined;
   clusterNavNode.innerHTML = "";
   clustersNode.innerHTML = "";
 
@@ -602,6 +580,14 @@ function renderClusters(payload) {
     ${payload.clusters.map(cluster => clusterTab(cluster, cluster.cluster === activeClusterName)).join("")}
   `;
   clustersNode.innerHTML = renderClusterCard(selectedCluster, viewState);
+  const stateFilter = clustersNode.querySelector("#state-filter-mount");
+  if (stateFilter) {
+    unmountStateFilter = mountStateFilter(
+      stateFilter,
+      sortCountItems(selectedCluster.summary?.state_counts || []),
+      viewState.state,
+    );
+  }
 
   for (const button of clusterNavNode.querySelectorAll("[data-cluster-name]")) {
     button.addEventListener("click", () => {
