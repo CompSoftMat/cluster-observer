@@ -22,7 +22,9 @@ const PREFERRED_USER_KEY = "cluster-observer.preferred-user";
 
 let lastGeneratedEpoch = null;
 let activeClusterName = null;
+let showingMyViews = false;
 const clusterViewState = Object.create(null);
+const overviewStates = new Map();
 const savedViews = loadSavedViews();
 
 function loadSavedViews() {
@@ -422,18 +424,23 @@ function renderControls(cluster, viewState) {
     <section class="controls-card">
       <div class="controls-head">
         <h3 class="facet-card-title">Jobs</h3>
+        <div class="job-control-actions">
         <details class="saved-views">
-          <summary>Views</summary>
+          <summary class="secondary-button">Views <span aria-hidden="true">▾</span></summary>
           <div class="saved-view-menu">
-            <button type="button" data-view-action="save">Save current view</button>
+            <div class="saved-view-actions">
+              <button type="button" data-open-my-views>Open My Views</button>
+              <button type="button" data-view-action="save">Save current view</button>
+            </div>
             ${savedViews.views.map((view, index) => `<div class="saved-view-row">
-              <button type="button" data-view-action="apply" data-view-index="${index}">${escapeHtml(view.name)} <small>${escapeHtml(view.cluster)}</small></button>
+              <button class="saved-view-name" type="button" data-view-action="apply" data-view-index="${index}">${escapeHtml(view.name)} <small>${escapeHtml(view.cluster)}</small></button>
               <button type="button" data-view-action="default" data-view-index="${index}">${savedViews.defaultName === view.name ? "Clear default" : "Set default"}</button>
               <button type="button" data-view-action="delete" data-view-index="${index}">Delete</button>
             </div>`).join("")}
           </div>
         </details>
         <button type="button" class="secondary-button" data-action="clear-all">Reset to defaults</button>
+        </div>
       </div>
       <div class="control-grid">
         <label class="control-field">
@@ -606,6 +613,38 @@ function renderClusterCard(cluster, viewState) {
 
 let unmountStateFilter;
 
+function renderMyViews(payload) {
+  clustersNode.innerHTML = `
+    <section class="my-views-page">
+      <h2>My Views</h2>
+      ${savedViews.views.length ? savedViews.views.map((view, index) => `
+        <article class="cluster-card my-view-card" data-overview-index="${index}">
+          <header><h3>${escapeHtml(view.name)}</h3><p>${escapeHtml(view.cluster)}</p></header>
+          <div data-overview-table></div>
+        </article>`).join("") : '<p class="empty">Save a view from a cluster’s Views menu to see it here.</p>'}
+    </section>`;
+
+  for (const card of clustersNode.querySelectorAll("[data-overview-index]")) {
+    const view = savedViews.views[Number(card.dataset.overviewIndex)];
+    const cluster = payload.clusters.find(item => item.cluster === view.cluster);
+    const table = card.querySelector("[data-overview-table]");
+    if (!cluster || (!cluster.ok && !cluster.stale)) {
+      table.textContent = "Cluster data unavailable.";
+      continue;
+    }
+    if (cluster.stale) {
+      const warning = document.createElement("p");
+      warning.className = "stale-warning";
+      warning.textContent = "Showing the last successful snapshot.";
+      card.insertBefore(warning, table);
+    }
+    const state = overviewStates.get(view) || {...view.filters, page: 1};
+    overviewStates.set(view, state);
+    table.innerHTML = renderJobTable(filteredJobs(cluster, state), state);
+    attachJobTableHandlers(table, cluster, state, () => renderClusters(payload));
+  }
+}
+
 function renderClusters(payload) {
   unmountStateFilter?.();
   unmountStateFilter = undefined;
@@ -631,9 +670,28 @@ function renderClusters(payload) {
 
   clusterNavNode.innerHTML = `
     <p class="cluster-nav-title">Clusters</p>
-    ${payload.clusters.map(cluster => clusterTab(cluster, cluster.cluster === activeClusterName)).join("")}
+    <button type="button" class="secondary-button my-views-nav" data-open-my-views aria-pressed="${showingMyViews}">My Views</button>
+    ${payload.clusters.map(cluster => clusterTab(cluster, !showingMyViews && cluster.cluster === activeClusterName)).join("")}
   `;
+  for (const button of clusterNavNode.querySelectorAll("[data-cluster-name]")) {
+    button.addEventListener("click", () => {
+      showingMyViews = false;
+      activeClusterName = button.dataset.clusterName;
+      renderClusters(payload);
+    });
+  }
+  function openMyViews() {
+    showingMyViews = true;
+    renderClusters(payload);
+    clustersNode.querySelector("h2")?.scrollIntoView({block: "nearest"});
+  }
+  clusterNavNode.querySelector("[data-open-my-views]").addEventListener("click", openMyViews);
+  if (showingMyViews) {
+    renderMyViews(payload);
+    return;
+  }
   clustersNode.innerHTML = renderClusterCard(selectedCluster, viewState);
+  clustersNode.querySelector("[data-open-my-views]")?.addEventListener("click", openMyViews);
   const stateFilter = clustersNode.querySelector("#state-filter-mount");
   if (stateFilter) {
     const counts = new Map((selectedCluster.summary?.state_counts || []).map(item => [item.value, item]));
@@ -662,13 +720,6 @@ function renderClusters(payload) {
         (option || choices.querySelector("button")).focus({preventScroll: true});
       },
     );
-  }
-
-  for (const button of clusterNavNode.querySelectorAll("[data-cluster-name]")) {
-    button.addEventListener("click", () => {
-      activeClusterName = button.dataset.clusterName;
-      renderClusters(payload);
-    });
   }
 
   attachClusterHandlers(selectedCluster, payload);
@@ -744,21 +795,14 @@ function attachClusterHandlers(cluster, payload) {
         if (savedViews.defaultName === view.name) savedViews.defaultName = "";
         savedViews.views.splice(index, 1);
       }
+      overviewStates.clear();
       persistSavedViews();
       renderClusters(payload);
       const menu = clustersNode.querySelector(".saved-views");
       if (menu) menu.open = true;
     });
   }
-  const jobsById = new Map((cluster.jobs || []).map(job => [job.job_id, job]));
-  for (const button of clustersNode.querySelectorAll("[data-job-id]")) {
-    button.addEventListener("click", () => {
-      openJobDetails(jobsById.get(button.dataset.jobId), jobsById, button);
-    });
-  }
-  for (const button of clustersNode.querySelectorAll("[data-copy-job-id]")) {
-    button.addEventListener("click", () => copyTableJobId(button));
-  }
+  attachJobTableHandlers(clustersNode, cluster, viewState, () => renderClusters(payload));
   const moreFilters = clustersNode.querySelector(".more-filters");
   moreFilters?.addEventListener("toggle", () => {
     if (moreFilters.isConnected) viewState.showMoreFilters = moreFilters.open;
@@ -801,26 +845,6 @@ function attachClusterHandlers(cluster, payload) {
     });
   }
 
-  for (const button of clustersNode.querySelectorAll("[data-sort-key]")) {
-    button.addEventListener("click", () => {
-      const sortKey = button.dataset.sortKey;
-      if (viewState.sortKey === sortKey) {
-        viewState.sortDirection = viewState.sortDirection === "asc" ? "desc" : "asc";
-      } else {
-        viewState.sortKey = sortKey;
-        viewState.sortDirection = sortKey === "submitted_at" ? "asc" : "desc";
-      }
-      renderClusters(payload);
-    });
-  }
-
-  for (const button of clustersNode.querySelectorAll("[data-page-delta]")) {
-    button.addEventListener("click", () => {
-      viewState.page = Math.max(1, viewState.page + Number.parseInt(button.dataset.pageDelta, 10));
-      renderClusters(payload);
-    });
-  }
-
   for (const button of clustersNode.querySelectorAll("[data-action='clear-all']")) {
     button.addEventListener("click", () => {
       for (const key of FILTER_KEYS) {
@@ -840,6 +864,37 @@ function attachClusterHandlers(cluster, payload) {
     button.addEventListener("click", () => {
       viewState.showBreakdowns = !viewState.showBreakdowns;
       renderClusters(payload);
+    });
+  }
+}
+
+function attachJobTableHandlers(container, cluster, viewState, render) {
+  const jobsById = new Map((cluster.jobs || []).map(job => [job.job_id, job]));
+  for (const button of container.querySelectorAll("[data-job-id]")) {
+    button.addEventListener("click", () => {
+      openJobDetails(jobsById.get(button.dataset.jobId), jobsById, button);
+    });
+  }
+  for (const button of container.querySelectorAll("[data-copy-job-id]")) {
+    button.addEventListener("click", () => copyTableJobId(button));
+  }
+  for (const button of container.querySelectorAll(".sort-button")) {
+    button.addEventListener("click", () => {
+      const sortKey = button.dataset.sortKey;
+      if (viewState.sortKey === sortKey) {
+        viewState.sortDirection = viewState.sortDirection === "asc" ? "desc" : "asc";
+      } else {
+        viewState.sortKey = sortKey;
+        viewState.sortDirection = sortKey === "submitted_at" ? "asc" : "desc";
+      }
+      render();
+    });
+  }
+
+  for (const button of container.querySelectorAll("[data-page-delta]")) {
+    button.addEventListener("click", () => {
+      viewState.page = Math.max(1, viewState.page + Number.parseInt(button.dataset.pageDelta, 10));
+      render();
     });
   }
 }
@@ -884,5 +939,16 @@ function renderUpdateAge() {
 }
 
 refreshButton.addEventListener("click", () => refresh(true));
+document.addEventListener("pointerdown", event => {
+  const menu = clustersNode.querySelector(".saved-views[open]");
+  if (menu && !menu.contains(event.target)) menu.open = false;
+});
+document.addEventListener("keydown", event => {
+  const menu = clustersNode.querySelector(".saved-views[open]");
+  if (event.key === "Escape" && menu && !document.querySelector("dialog[open]")) {
+    menu.open = false;
+    menu.querySelector("summary").focus();
+  }
+});
 setInterval(renderUpdateAge, 10000);
 refresh(false);
