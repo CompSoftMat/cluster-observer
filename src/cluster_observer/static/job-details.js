@@ -47,6 +47,7 @@ export function openJobDetails(initialJob, jobsById, trigger) {
         ["Status", current.status_label],
       ];
       if (current.exit_status != null) fields.push(["Exit status", String(current.exit_status)]);
+      if (current.comment?.trim()) fields.push(["PBS comment", current.comment]);
       const dependencies = current.dependency_job_ids || [];
       if (dependencies.length) {
         fields.push(["Predecessors", h("ul", dependencies.map(id => {
