@@ -1088,7 +1088,22 @@ function parseSettings(text) {
 const settingsDialog = document.getElementById("settings-dialog");
 const settingsMessage = document.getElementById("settings-message");
 const settingsFile = document.getElementById("settings-file");
+function isSettingsBackdrop(event) {
+  const {left, right, top, bottom} = settingsDialog.getBoundingClientRect();
+  return event.target === settingsDialog &&
+    (event.clientX < left || event.clientX >= right || event.clientY < top || event.clientY >= bottom);
+}
+
+let settingsPointerOnBackdrop = false;
+settingsDialog.addEventListener("pointerdown", event => {
+  settingsPointerOnBackdrop = isSettingsBackdrop(event);
+});
+settingsDialog.addEventListener("click", event => {
+  if (settingsPointerOnBackdrop && isSettingsBackdrop(event)) settingsDialog.close();
+  settingsPointerOnBackdrop = false;
+});
 document.getElementById("settings-button").addEventListener("click", () => {
+  settingsPointerOnBackdrop = false;
   settingsMessage.textContent = "";
   settingsDialog.showModal();
 });
