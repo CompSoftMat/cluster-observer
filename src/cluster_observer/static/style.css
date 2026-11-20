@@ -191,7 +191,8 @@ button:disabled {
 
 .cluster-tab {
   width: 100%;
-  border-radius: 14px;
+  border-color: transparent;
+  border-radius: 8px;
   padding: 12px 14px;
   background: transparent;
   display: grid;
@@ -199,8 +200,10 @@ button:disabled {
   text-align: left;
 }
 
-.cluster-tab.active {
-  background: rgba(126, 156, 216, 0.1);
+.cluster-tab.active,
+.my-views-nav[aria-pressed="true"] {
+  background: linear-gradient(100deg, #30384b, #242630);
+  box-shadow: inset 3px 0 var(--accent);
   border-color: rgba(126, 156, 216, 0.3);
 }
 
@@ -472,9 +475,18 @@ button:disabled {
   background: #1d1d26;
 }
 
-.controls-card,
 .results-card {
-  background: linear-gradient(180deg, rgba(38, 38, 51, 0.96), rgba(29, 29, 38, 0.96));
+  background: #252631;
+}
+
+.results-card .table-shell {
+  background: #22232c;
+  border-color: #383b48;
+}
+
+.results-card .col-resource,
+.results-card .col-time {
+  font-variant-numeric: tabular-nums;
 }
 
 .controls-card {
@@ -482,7 +494,8 @@ button:disabled {
   top: 12px;
   z-index: 4;
   padding: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: #202129;
+  border-color: #30313c;
 }
 
 .facet-card-head,
@@ -705,7 +718,7 @@ th,
 td {
   text-align: left;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(160, 168, 192, 0.1);
   font-size: 0.88rem;
   vertical-align: middle;
 }
@@ -800,8 +813,17 @@ tbody tr:nth-child(even) {
   background: rgba(255, 255, 255, 0.015);
 }
 
-tbody tr:hover {
-  background: rgba(126, 156, 216, 0.06);
+tbody tr:hover,
+tbody tr:focus-within {
+  background: rgba(126, 156, 216, 0.11);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  tbody tr:not(:hover):not(:focus-within) .job-copy-button {
+    opacity: 0.55;
+    border-color: transparent;
+    background: transparent;
+  }
 }
 
 .error {
