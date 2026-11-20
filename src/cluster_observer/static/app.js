@@ -9,6 +9,8 @@ const refreshButton = document.getElementById("refresh-button");
 const dashboardTitleNode = document.getElementById("dashboard-title");
 
 const PAGE_SIZE = 40;
+const SNAPSHOT_KEY = "cluster-observer.job-snapshot";
+const snapshotChanges = new Map();
 const FACET_PREVIEW_LIMIT = 10;
 const FILTER_KEYS = ["user", "queue", "project"];
 const SAVED_VIEWS_KEY = "cluster-observer.saved-views";
@@ -331,9 +333,18 @@ function renderFacetSection(title, key, items, activeValue) {
   `;
 }
 
+function walltimeSeconds(value) {
+  if (!/^\d+:[0-5]\d:[0-5]\d$/.test(value || "")) return null;
+  const [hours, minutes, seconds] = value.split(":").map(Number);
+  return 3600 * hours + 60 * minutes + seconds;
+}
+
 function jobRow(job, showCluster) {
   const used = job.used_walltime || "—";
   const requested = job.requested_walltime || "—";
+  const elapsed = walltimeSeconds(used);
+  const limit = walltimeSeconds(requested);
+  const progress = elapsed !== null && limit > 0 ? Math.round(100 * elapsed / limit) : null;
   return `
     <tr>
       <td data-label="Job" class="col-job">
@@ -345,7 +356,9 @@ function jobRow(job, showCluster) {
       <td data-label="State" class="col-state">${statusMarkup(job)}</td>
       <td data-label="Queue" class="col-queue">${escapeHtml(job.queue || "-")}</td>
       <td data-label="Resources" class="col-resource">${escapeHtml(resourceLabel(job))}</td>
-      <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}</td>
+      <td data-label="Walltime" class="col-time"><span class="walltime-used">${escapeHtml(used)}</span><span class="walltime-separator"> / </span>${escapeHtml(requested)}
+        ${progress === null ? "" : `<progress class="walltime-progress${progress >= 90 ? " near-limit" : ""}" max="100" value="${Math.min(progress, 100)}" aria-label="${progress}% of requested walltime" title="${progress}% of requested walltime"></progress>`}
+      </td>
       <td class="col-copy">
         <button class="job-copy-button" type="button" data-copy-job-id="${escapeHtml(job.job_id)}" title="Copy job ID" aria-label="Copy job ID"><span aria-hidden="true">⧉</span></button>
       </td>
@@ -379,6 +392,7 @@ function renderJobTable(jobs, viewState, showCluster = false) {
   const pageStart = (page - 1) * PAGE_SIZE;
   const pageJobs = sortedJobs.slice(pageStart, pageStart + PAGE_SIZE);
   const pageEnd = Math.min(sortedJobs.length, pageStart + PAGE_SIZE);
+  viewState.exportJobs = sortedJobs;
   return `
     <section class="results-card">
       <div class="results-head">
@@ -387,6 +401,7 @@ function renderJobTable(jobs, viewState, showCluster = false) {
           <p class="results-meta">Showing ${pageStart + 1}-${pageEnd} of ${sortedJobs.length} jobs</p>
         </div>
         <div class="pagination">
+          <button type="button" data-export-csv>Export CSV</button>
           <button type="button" data-page-delta="-1"${page <= 1 ? " disabled" : ""}>Prev</button>
           <span class="pagination-label">Page ${page} / ${pageCount}</span>
           <button type="button" data-page-delta="1"${page >= pageCount ? " disabled" : ""}>Next</button>
@@ -649,6 +664,57 @@ function renderCombinedViews(container, clusters) {
   attachJobTableHandlers(container, clusters, combinedState, () => renderCombinedViews(container, clusters));
 }
 
+function trackSnapshotChanges(payload) {
+  try {
+    const storage = window.localStorage;
+    const previous = new Map(JSON.parse(storage.getItem(SNAPSHOT_KEY) || "[]"));
+    for (const cluster of payload.clusters) {
+      if (!cluster.ok || cluster.stale) continue;
+      const old = previous.get(cluster.cluster);
+      const epoch = cluster.last_success_epoch ?? payload.generated_at_epoch;
+      if (old && epoch <= old.epoch) continue;
+      const jobs = cluster.jobs.map(job => [job.job_id, job.state, job.outcome || ""]);
+      const changes = [];
+      if (old) {
+        const before = new Map(old.jobs.map(([id, state, outcome]) => [id, {state, outcome}]));
+        for (const [id, state, outcome] of jobs) {
+          const prior = before.get(id);
+          if (outcome !== prior?.outcome && ["successful", "failed", "cancelled"].includes(outcome)) {
+            changes.push([outcome === "successful" ? "Completed" : outcome === "failed" ? "Failed" : "Cancelled", id]);
+          } else if (state === "R" && prior?.state !== "R") {
+            changes.push(["Started or newly seen running", id]);
+          }
+          before.delete(id);
+        }
+        for (const id of before.keys()) changes.push(["No longer listed", id]);
+      }
+      snapshotChanges.set(cluster.cluster, changes);
+      previous.set(cluster.cluster, {epoch, jobs});
+    }
+    storage.setItem(SNAPSHOT_KEY, JSON.stringify([...previous]));
+  } catch {
+    // A browser without retained snapshots can still use the dashboard.
+  }
+}
+
+function renderSnapshotChanges() {
+  const groups = new Map();
+  for (const [cluster, changes] of snapshotChanges) {
+    for (const [label, id] of changes) {
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(`${cluster} · ${id}`);
+    }
+  }
+  if (!groups.size) return "";
+  return `<section class="snapshot-summary" aria-label="Changes in tracked jobs">
+    <span>Changes in tracked jobs</span>
+    ${[...groups].map(([label, jobs]) => `<details class="snapshot-changes">
+      <summary>${jobs.length} ${label.toLowerCase()}</summary>
+      <ul>${jobs.map(job => `<li>${escapeHtml(job)}</li>`).join("")}</ul>
+    </details>`).join("")}
+  </section>`;
+}
+
 function renderMyViews(payload) {
   const clusters = new Map(payload.clusters.map(cluster => [cluster.cluster, cluster]));
   clustersNode.innerHTML = `
@@ -660,6 +726,7 @@ function renderMyViews(payload) {
           <button type="button" class="secondary-button" data-view-mode="combined" aria-pressed="${combinedViews}">Combined</button>
         </div>` : ""}
       </header>
+      ${renderSnapshotChanges()}
       ${savedViews.views.length ? (combinedViews ? '<div data-combined-table></div>' : savedViews.views.map((view, index) => `
         <article class="cluster-card my-view-card" data-overview-index="${index}">
           <header class="my-view-header">
@@ -978,7 +1045,28 @@ function attachClusterHandlers(cluster, payload) {
   }
 }
 
+function exportJobsCsv(jobs, clusterName) {
+  const fields = ["cluster", "job_id", "project", "user", "state", "outcome", "queue", "cpu", "gpu", "used_walltime", "requested_walltime"];
+  function cell(value) {
+    let text = String(value ?? "");
+    if (/^\s*[=+@-]|^[\t\r\n]/.test(text)) text = "'" + text;
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  const csv = [fields.join(","), ...jobs.map(job => fields.map(field =>
+    cell(field === "cluster" ? job.cluster || clusterName : job[field])
+  ).join(","))].join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "cluster-observer-jobs.csv";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function attachJobTableHandlers(container, cluster, viewState, render) {
+  container.querySelector("[data-export-csv]")?.addEventListener("click", () => {
+    exportJobsCsv(viewState.exportJobs, cluster.cluster);
+  });
   const clusters = cluster instanceof Map ? cluster : new Map([[cluster.cluster, cluster]]);
   const jobIndexes = new Map();
   for (const button of container.querySelectorAll("[data-job-id]")) {
@@ -1025,6 +1113,7 @@ async function refresh(force = false) {
       throw new Error(`HTTP ${response.status}`);
     }
     const payload = await response.json();
+    trackSnapshotChanges(payload);
     if (payload.dashboard_title) {
       const title = payload.dashboard_title;
       document.title = title;
@@ -1159,12 +1248,14 @@ settingsFile.addEventListener("change", async () => {
 });
 
 refreshButton.addEventListener("click", () => refresh(true));
+const popupSelector = ".saved-views[open], .state-choices[open], .snapshot-changes[open]";
 document.addEventListener("pointerdown", event => {
-  const menu = clustersNode.querySelector(".saved-views[open]");
-  if (menu && !menu.contains(event.target)) menu.open = false;
+  for (const popup of clustersNode.querySelectorAll(popupSelector)) {
+    if (!popup.contains(event.target)) popup.open = false;
+  }
 });
 document.addEventListener("keydown", event => {
-  const menu = clustersNode.querySelector(".saved-views[open]");
+  const menu = event.target.closest?.(popupSelector) || clustersNode.querySelector(popupSelector);
   if (event.key === "Escape" && menu && !document.querySelector("dialog[open]")) {
     menu.open = false;
     menu.querySelector("summary").focus();

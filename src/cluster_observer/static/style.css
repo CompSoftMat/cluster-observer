@@ -1062,3 +1062,31 @@ td.col-copy::before { content: none; }
 .job-details-fields dt { color: var(--muted); }
 .job-details-fields dd { margin: 0; overflow-wrap: anywhere; }
 .job-details-fields ul { margin: 0; padding: 0; list-style: none; }
+.walltime-progress {
+  display: block;
+  width: 100%;
+  max-width: 10rem;
+  height: 4px;
+  margin-top: 4px;
+  accent-color: var(--accent);
+}
+.walltime-progress.near-limit { accent-color: var(--warn); }
+.snapshot-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.snapshot-summary > span { color: var(--muted); }
+.snapshot-changes summary { cursor: pointer; color: var(--accent); }
+.snapshot-changes ul {
+  max-height: 14rem;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding-inline-start: 1.25rem;
+  overflow-wrap: anywhere;
+}
